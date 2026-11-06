@@ -49,6 +49,14 @@ in-memory store and died with it — nothing was persisted, no Redis was
 configured, and the final `LOY_ADMIN_TOKEN=test-token` was only ever set
 for that local run (it is not in any file; `.env.example` ships empty).
 
+## 2026-11-06 evening — blank river
+
+- Faiq asked for the river to start blank. The eight seed wishes were
+  removed from `lib/seed.ts` (kept in git history, commit 22af37c5, for
+  restoration if he ever wants them back). Live check after redeploy:
+  `GET /api/wishes` returns `count: 0`, `storage: "redis"` — no test
+  data and no seeds remain; the river only shows wishes visitors float.
+
 ## 2026-11-06 evening — shared-store readiness
 
 - Vercel's Upstash integration no longer offers a free plan (cheapest is
