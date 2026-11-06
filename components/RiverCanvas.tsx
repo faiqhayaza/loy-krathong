@@ -249,7 +249,12 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     let nextBolt = 9000;
     let boltStart = -1;
     let boltX = 0;
-    let showUntil = 0;
+    // Animation time (ms) since the hidden preview show started; -1 means
+    // no show is running. The show's length is measured in this clock —
+    // it advances by dt each frame — not in wall time, so a tab whose
+    // frames pause or throttle doesn't eat the show: it resumes where it
+    // left off instead of expiring silently with an empty sky.
+    let showElapsed = -1;
     let colorIdx = 0; // fireworks cycle gold → pink → violet → white, in order
     const clickTimes: number[] = [];
 
@@ -1083,14 +1088,23 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           launchRocket();
         }
       }
-      if (showUntil > now) {
-        nextShowRocket -= dt;
-        if (nextShowRocket <= 0) {
-          // a rocket every ~0.5–0.8 s, and sometimes two at once, so the
-          // sky is rarely empty during the show
-          nextShowRocket = 500 + Math.random() * 300;
-          launchRocket();
-          if (Math.random() < 0.3) launchRocket();
+      // Preview show — measured in animation time, not wall time (see
+      // showElapsed): while it runs, each frame adds dt, so a paused or
+      // throttled tab stretches the show in wall time instead of cutting
+      // it short.
+      if (showElapsed >= 0) {
+        showElapsed += dt;
+        if (showElapsed < 60000) {
+          nextShowRocket -= dt;
+          if (nextShowRocket <= 0) {
+            // a rocket every ~0.5–0.8 s, and sometimes two at once, so the
+            // sky is rarely empty during the show
+            nextShowRocket = 500 + Math.random() * 300;
+            launchRocket();
+            if (Math.random() < 0.3) launchRocket();
+          }
+        } else {
+          showElapsed = -1;
         }
       }
       for (let i = rockets.length - 1; i >= 0; i--) {
@@ -1142,7 +1156,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       while (clickTimes.length > 0 && now - clickTimes[0] > 4000) clickTimes.shift();
       if (clickTimes.length >= 5) {
         clickTimes.length = 0;
-        showUntil = now + 25000;
+        showElapsed = 0;
         nextShowRocket = 0;
       }
     }

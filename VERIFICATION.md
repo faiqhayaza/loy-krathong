@@ -199,6 +199,45 @@ Two findings from the live visual check of the round-2 scene
   at tonight's 99% cloud cover.
 - Not pushed, not deployed; working tree left ready for review.
 
+## 2026-11-06 evening — fix round 3: show length is animation time, preview is 60 s
+
+(`components/RiverCanvas.tsx` only; temple, moon, weather, swifts
+untouched.)
+- **Show still ended early.** A second precise live timing test found
+  bursts at T+0 and T+15 but an empty sky at T+20/T+24 — the show ran
+  ~15–18 s, not 25 s. Diagnosis: the previous fix made the rocket
+  *launchers* dt-based but left the show *end* wall-clock-based
+  (`showUntil = performance.now() + 25000` compared against
+  `performance.now()`), so any frame pause or throttle silently ate
+  the window. Fix: the end is now measured in accumulated animation
+  time — `showElapsed` (ms, -1 = no show) advances by `dt` each
+  frame while a show runs and the show ends at `showElapsed >= 60000`.
+  A paused tab stretches the show in wall time instead of cutting it
+  short; it resumes where it left off.
+- **Preview show is now 60 s, not 25 s** (Faiq: "why not 60s").
+  Same accumulated-animation-time approach, end at 60000 ms. The
+  festival-night auto show is unchanged (plays all evening
+  19:00–23:59 anyway). Rocket timers (500–800 ms cadence, 30%
+  double launch), colour cycling gold → pink → violet → white,
+  caps, and the 5-click trigger are untouched.
+- Verification this round: `npm run build` passes clean (see below).
+  Node-simulated the show logic exactly as written (dt clamped to
+  50 ms, 500–800 ms cadence, 30% double launch, 6-rocket cap with
+  a flight model), 20 seeds per scenario: at 60 fps the show runs
+  60.0 s of animation time with ~91 launch events / ~118 rockets
+  (range 108–128); at 20 fps 60.0 s with ~89 events / ~115 rockets
+  (range 105–126); at 60 fps with a 5 s wall-clock pause mid-show
+  (no frames at all, then resume) the show runs 60.0 s of animation
+  time over 65.0 s of wall time with the same ~91 events / ~118
+  rockets — the pause stretches it instead of eating it. (The
+  ~115–118 rocket count is higher than the rough 65–75 estimate in
+  the brief because that figure was launch events at the old
+  700–1100 ms cadence; at 500–800 ms there are ~90 events and the
+  30% double launches add ~30% more rockets.) No live-browser
+  visual check was possible from here — the canvas still needs eyes
+  on it after deploy, especially the show at T+20/T+40/T+55.
+- Not pushed, not deployed; working tree left ready for review.
+
 ## 2026-11-06 evening — shared-store readiness
 
 - Vercel's Upstash integration no longer offers a free plan (cheapest is
