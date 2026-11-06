@@ -1,9 +1,10 @@
 // The river: a living Bangkok night. Above the water — a deep sky with
 // twinkling stars and a full moon, slow clouds, swifts crossing in loose
-// flocks, the odd falling star, and a Wat Arun-inspired temple silhouette
-// on the far bank with warm gold windows. The weather follows the real
-// Bangkok sky (Open-Meteo, refetched every 10 minutes; a gentle invented
-// cycle takes over if the fetch fails), so rain, cloud and wind are what
+// flocks, the odd falling star, and a detailed Wat Arun illustration on
+// the far bank (an SVG layered over the canvas, with warm lit windows and
+// a soft reflection in the water). The weather follows the real Bangkok
+// sky (Open-Meteo, refetched every 10 minutes; a gentle invented cycle
+// takes over if the fetch fails), so rain, cloud and wind are what
 // Bangkok is doing tonight — under a heavy overcast the clouds close
 // into a deck and the moon and stars fade to a faint glow through it.
 // On Loy Krathong night itself (24 Nov 2026, 19:00–23:59 Bangkok time)
@@ -11,15 +12,18 @@
 // toward the spire. Five quick clicks anywhere on the
 // canvas launch a short fireworks show — a hidden preview for the night.
 //
-// Below it all, dark reflective water and one floating krathong per wish,
-// name on a small tag above it. Hover (or tap) reads the wish; a click
-// pins it open.
+// Below it all, dark water with a living current — long, uneven flow
+// lines drifting downstream — an uneven far bank with reeds at the
+// water's edge, moonlight that breaks and reforms on the surface, and
+// one floating krathong per wish, name on a small tag above it. Hover
+// (or tap) reads the wish; a click pins it open.
 
 'use client';
 
 import { useEffect, useRef } from 'react';
 import type { Lang, Wish } from '@/lib/data';
 import { boatColors, flameColor, flowerGlyph } from '@/lib/data';
+import WatArunSvg from './WatArunSvg';
 
 interface Sprite {
   id: string;
@@ -34,6 +38,10 @@ interface Sprite {
 
 interface Star { x: number; y: number; r: number; phase: number; speed: number }
 interface Cloud { x: number; y: number; s: number }
+interface BankPt { x: number; y: number }
+interface Tuft { x: number; y: number; h: number; lean: number; blades: number }
+interface FlowLine { x: number; y: number; len: number; spd: number; alpha: number; phase: number }
+interface Shimmer { x: number; y: number; w: number; phase: number; speed: number }
 interface SwiftBird { dx: number; dy: number; phase: number }
 interface SwiftFlock {
   birds: SwiftBird[];
@@ -235,6 +243,10 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     const stars: Star[] = [];
     const clouds: Cloud[] = [];
     const drops: RainDrop[] = [];
+    const bankPts: BankPt[] = [];
+    const tufts: Tuft[] = [];
+    const flows: FlowLine[] = [];
+    const shimmers: Shimmer[] = [];
     let flocks: SwiftFlock[] = [];
     let meteors: Meteor[] = [];
     let rings: RippleRing[] = [];
@@ -245,6 +257,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     let nextFlock = 6000;
     let nextRocket = 2000;
     let nextShowRocket = 0;
+    let nextAmbientRing = 2000;
     let lastNow = 0; // for the wall-clock delta the fireworks timers run on
     let nextBolt = 9000;
     let boltStart = -1;
@@ -276,6 +289,51 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       return 0.62 + row * 0.22;
     }
 
+    // Clouds are pre-rendered once to offscreen canvases: layered
+    // radial-gradient puffs with soft edges, baked in — so each frame is
+    // a cheap drawImage instead of dozens of fresh gradients.
+    function makeCloudSprite(seed: number): HTMLCanvasElement {
+      const c = document.createElement('canvas');
+      c.width = 240;
+      c.height = 110;
+      const g = c.getContext('2d');
+      if (!g) return c;
+      let s = seed;
+      const rnd = () => {
+        s = (s * 16807) % 2147483647;
+        return s / 2147483647;
+      };
+      // 7 puffs, denser in the middle, soft at the edges
+      for (let i = 0; i < 7; i++) {
+        const px = 40 + rnd() * 160;
+        const py = 45 + (rnd() - 0.5) * 30;
+        const pr = 26 + rnd() * 34;
+        const grad = g.createRadialGradient(px, py, pr * 0.1, px, py, pr);
+        grad.addColorStop(0, 'rgba(32, 40, 78, 0.85)');
+        grad.addColorStop(0.7, 'rgba(32, 40, 78, 0.45)');
+        grad.addColorStop(1, 'rgba(32, 40, 78, 0)');
+        g.fillStyle = grad;
+        g.beginPath();
+        g.arc(px, py, pr, 0, Math.PI * 2);
+        g.fill();
+      }
+      // a faint moonlit top edge on the middle puffs
+      for (let i = 0; i < 3; i++) {
+        const px = 70 + rnd() * 100;
+        const py = 38 + rnd() * 14;
+        const pr = 20 + rnd() * 18;
+        const grad = g.createRadialGradient(px, py, pr * 0.1, px, py, pr);
+        grad.addColorStop(0, 'rgba(150, 165, 220, 0.22)');
+        grad.addColorStop(1, 'rgba(150, 165, 220, 0)');
+        g.fillStyle = grad;
+        g.beginPath();
+        g.arc(px, py, pr, 0, Math.PI * 2);
+        g.fill();
+      }
+      return c;
+    }
+    const cloudSprites = [makeCloudSprite(11), makeCloudSprite(47), makeCloudSprite(83)];
+
     function seedSky() {
       stars.length = 0;
       const n = Math.min(110, Math.floor((w * h) / 14000));
@@ -303,6 +361,56 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           y: Math.random() * h,
           len: 8 + Math.random() * 7,
           speed: 5 + Math.random() * 4,
+        });
+      }
+      // The far bank: an uneven shoreline, seeded once per resize so it
+      // never jitters between frames.
+      bankPts.length = 0;
+      for (let i = 0; i <= 24; i++) {
+        bankPts.push({
+          x: (i / 24) * w,
+          y: horizon() + Math.sin(i * 1.7) * 2.2 + Math.sin(i * 0.6 + 2) * 2.5,
+        });
+      }
+      // Dark reeds and grass tufts at the water's edge, kept clear of the
+      // temple's centre so they never crowd it.
+      tufts.length = 0;
+      for (let i = 0; i < 16; i++) {
+        const x = Math.random() * w;
+        if (x > w * 0.16 && x < w * 0.44) continue;
+        tufts.push({
+          x,
+          y: horizon() + Math.random() * 3,
+          h: 5 + Math.random() * 9,
+          lean: (Math.random() - 0.5) * 4,
+          blades: 3 + Math.floor(Math.random() * 3),
+        });
+      }
+      // The living current: long, uneven flow lines, each with its own
+      // length, speed and brightness — never a set of uniform stripes.
+      flows.length = 0;
+      for (let i = 0; i < 16; i++) {
+        flows.push({
+          x: Math.random() * w,
+          y: h * (0.32 + Math.random() * 0.6),
+          len: 40 + Math.random() * 130,
+          spd: 0.12 + Math.random() * 0.3,
+          alpha: 0.03 + Math.random() * 0.06,
+          phase: Math.random() * Math.PI * 2,
+        });
+      }
+      // Moonlight on the water: short dashes that break and reform
+      // instead of a rigid column — each has its own phase, so the path
+      // is never the same shape twice.
+      shimmers.length = 0;
+      for (let i = 0; i < 18; i++) {
+        const depth = Math.random();
+        shimmers.push({
+          x: w * 0.78 + (Math.random() - 0.5) * (14 + depth * 70),
+          y: h * (0.3 + depth * 0.62),
+          w: 8 + Math.random() * 26,
+          phase: Math.random() * Math.PI * 2,
+          speed: 0.4 + Math.random() * 0.9,
         });
       }
     }
@@ -345,133 +453,6 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       draw(performance.now());
     }
 
-    // --- temple -----------------------------------------------------------
-    // One Wat Arun prang, drawn from the real thing: a wide stepped
-    // pyramidal base (three receding terraces), then a long, narrow shaft
-    // whose outline curves inward as it rises — the concave lotus-bud /
-    // corncob profile — topped by a small dome and a slender trident
-    // finial, with tiny spires at the terrace corners. bw is the base
-    // half-width, th the total height (finial included).
-    function prang(x: number, baseY: number, bw: number, th: number) {
-      const y0 = baseY;
-      const y1 = baseY - th * 0.13; // terrace 1 top
-      const y2 = baseY - th * 0.26; // terrace 2 top
-      const y3 = baseY - th * 0.38; // terrace 3 top / shaft base
-      const yD = baseY - th * 0.84; // shaft top / dome springing
-      const yT = baseY - th; // finial tip
-      // The shaft's concave curve: the control point sits close to the
-      // axis, so the outline pinches inward as it climbs.
-      const shaftCtrl = bw * 0.2;
-      const shaftTop = bw * 0.13;
-      ctx!.beginPath();
-      ctx!.moveTo(x - bw, y0);
-      ctx!.lineTo(x - bw, y1);
-      ctx!.lineTo(x - bw * 0.8, y1);
-      ctx!.lineTo(x - bw * 0.8, y2);
-      ctx!.lineTo(x - bw * 0.62, y2);
-      ctx!.lineTo(x - bw * 0.62, y3);
-      ctx!.lineTo(x - bw * 0.5, y3);
-      ctx!.quadraticCurveTo(x - shaftCtrl, baseY - th * 0.62, x - shaftTop, yD);
-      // lotus-bud dome over the shaft top
-      ctx!.quadraticCurveTo(x - shaftTop * 0.7, baseY - th * 0.93, x, baseY - th * 0.93);
-      ctx!.quadraticCurveTo(x + shaftTop * 0.7, baseY - th * 0.93, x + shaftTop, yD);
-      ctx!.quadraticCurveTo(x + shaftCtrl, baseY - th * 0.62, x + bw * 0.5, y3);
-      ctx!.lineTo(x + bw * 0.62, y3);
-      ctx!.lineTo(x + bw * 0.62, y2);
-      ctx!.lineTo(x + bw * 0.8, y2);
-      ctx!.lineTo(x + bw * 0.8, y1);
-      ctx!.lineTo(x + bw, y1);
-      ctx!.lineTo(x + bw, y0);
-      ctx!.closePath();
-      ctx!.fill();
-      // trident finial: a thin stem from the dome to the tip, with a
-      // small three-pronged fork at the top
-      const stemW = Math.max(1, bw * 0.045);
-      ctx!.fillRect(x - stemW / 2, baseY - th * 0.93, stemW, th * 0.07);
-      ctx!.lineWidth = Math.max(1, bw * 0.04);
-      ctx!.strokeStyle = ctx!.fillStyle as string;
-      ctx!.beginPath();
-      ctx!.moveTo(x, yT);
-      ctx!.lineTo(x - stemW * 2.2, yT + th * 0.035);
-      ctx!.moveTo(x, yT);
-      ctx!.lineTo(x + stemW * 2.2, yT + th * 0.035);
-      ctx!.stroke();
-      // miniature spires at the top terrace corners
-      for (const sx of [-1, 1]) {
-        const px = x + sx * bw * 0.62;
-        ctx!.beginPath();
-        ctx!.moveTo(px - bw * 0.07, y3);
-        ctx!.lineTo(px, y3 - th * 0.05);
-        ctx!.lineTo(px + bw * 0.07, y3);
-        ctx!.closePath();
-        ctx!.fill();
-      }
-    }
-
-    // A temple roof in two tiers, eave ends flicking upward.
-    function tieredRoof(x: number, baseY: number, rw: number, rh: number) {
-      ctx!.beginPath();
-      ctx!.moveTo(x - rw, baseY);
-      ctx!.quadraticCurveTo(x - rw * 0.92, baseY - rh * 0.28, x - rw * 0.62, baseY - rh * 0.3);
-      ctx!.lineTo(x + rw * 0.62, baseY - rh * 0.3);
-      ctx!.quadraticCurveTo(x + rw * 0.92, baseY - rh * 0.28, x + rw, baseY);
-      ctx!.closePath();
-      ctx!.fill();
-      ctx!.beginPath();
-      ctx!.moveTo(x - rw * 0.62, baseY - rh * 0.3);
-      ctx!.quadraticCurveTo(x - rw * 0.56, baseY - rh * 0.55, x - rw * 0.34, baseY - rh * 0.58);
-      ctx!.lineTo(x + rw * 0.34, baseY - rh * 0.58);
-      ctx!.quadraticCurveTo(x + rw * 0.56, baseY - rh * 0.55, x + rw * 0.62, baseY - rh * 0.3);
-      ctx!.closePath();
-      ctx!.fill();
-      ctx!.beginPath();
-      ctx!.moveTo(x - rw * 0.1, baseY - rh * 0.58);
-      ctx!.lineTo(x, baseY - rh * 0.95);
-      ctx!.lineTo(x + rw * 0.1, baseY - rh * 0.58);
-      ctx!.closePath();
-      ctx!.fill();
-    }
-
-    function drawTemple(t: number) {
-      const base = horizon();
-      // faint warm glow behind the central prang
-      const glow = ctx!.createRadialGradient(templeX(), base - h * 0.05, 4, templeX(), base - h * 0.05, w * 0.24);
-      glow.addColorStop(0, 'rgba(246, 211, 107, 0.10)');
-      glow.addColorStop(1, 'rgba(246, 211, 107, 0)');
-      ctx!.fillStyle = glow;
-      ctx!.fillRect(templeX() - w * 0.24, base - h * 0.24, w * 0.48, h * 0.26);
-
-      ctx!.fillStyle = '#04061a';
-      // low riverside blocks flanking the central platform
-      ctx!.fillRect(w * 0.25, base - h * 0.018, w * 0.04, h * 0.018);
-      ctx!.fillRect(w * 0.35, base - h * 0.018, w * 0.04, h * 0.018);
-      tieredRoof(w * 0.055, base, w * 0.04, h * 0.05);
-      tieredRoof(w * 0.575, base, w * 0.04, h * 0.045);
-      // Wat Arun's four satellite prangs, two on each side, stepping down
-      // in size away from the centre — the nearer pair tall, the farther
-      // pair low on the horizon
-      prang(w * 0.115, base, w * 0.018, h * 0.068);
-      prang(w * 0.505, base, w * 0.018, h * 0.068);
-      prang(w * 0.185, base, w * 0.026, h * 0.105);
-      prang(w * 0.415, base, w * 0.026, h * 0.105);
-      prang(templeX(), base, w * 0.045, h * 0.17);
-      // crisp bank line where sky meets water
-      ctx!.fillRect(0, base - 1, w, 2);
-
-      // warm windows, gently twinkling
-      const windows: [number, number][] = [
-        [0.3, 0.03], [0.3, 0.065], [0.3, 0.1],
-        [0.185, 0.03], [0.415, 0.03],
-        [0.055, 0.012], [0.575, 0.012],
-        [0.25, 0.008], [0.35, 0.008],
-      ];
-      windows.forEach(([fx, fy], i) => {
-        const a = 0.45 + 0.3 * Math.sin(t / 700 + i * 1.9);
-        ctx!.fillStyle = `rgba(246, 211, 107, ${a.toFixed(3)})`;
-        ctx!.fillRect(w * fx - 1.2, base - h * fy - 1.8, 2.5, 3.5);
-      });
-    }
-
     // --- swifts -----------------------------------------------------------
     function spawnFlock(festival: boolean) {
       const n = 3 + Math.floor(Math.random() * 4);
@@ -507,15 +488,42 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       }
     }
 
-    function drawSwift(bx: number, by: number, t: number, phase: number, alpha: number) {
-      const flap = Math.sin(t / 110 + phase) * 4;
-      ctx!.strokeStyle = `rgba(5, 8, 26, ${alpha.toFixed(3)})`;
-      ctx!.lineWidth = 1.6;
+    // A swift, not a stroke: a slim body, swept sickle wings and a forked
+    // tail. The wings rise and fold on a real flap cycle — sin(t/110)
+    // lifts the tips, and the blades sweep further back as they fall, so
+    // the bird reads as flapping rather than bobbing. dir is the flight
+    // direction (1 right, -1 left).
+    function drawSwift(bx: number, by: number, t: number, phase: number, alpha: number, dir: number) {
+      const flap = Math.sin(t / 110 + phase);
+      const lift = 3 + flap * 4.5; // wing-tip height above the body
+      const sweep = 2 + (1 - flap) * 2.5; // how far back the tips sweep
+      ctx!.save();
+      ctx!.translate(bx, by);
+      ctx!.scale(dir, 1);
+      ctx!.fillStyle = `rgba(5, 8, 26, ${alpha.toFixed(3)})`;
+      // forked tail
       ctx!.beginPath();
-      ctx!.moveTo(bx - 7, by);
-      ctx!.quadraticCurveTo(bx - 3.5, by - 3 - flap, bx, by);
-      ctx!.quadraticCurveTo(bx + 3.5, by - 3 - flap, bx + 7, by);
-      ctx!.stroke();
+      ctx!.moveTo(-4, 0);
+      ctx!.lineTo(-11, -2.4);
+      ctx!.lineTo(-9, 0);
+      ctx!.lineTo(-11, 2.4);
+      ctx!.closePath();
+      ctx!.fill();
+      // slim body
+      ctx!.beginPath();
+      ctx!.ellipse(0, 0, 6.5, 1.7, 0, 0, Math.PI * 2);
+      ctx!.fill();
+      // sickle wings: long blades curving back from the shoulder, tips
+      // rising with the flap
+      for (const side of [-1, 1]) {
+        ctx!.beginPath();
+        ctx!.moveTo(0, 0);
+        ctx!.quadraticCurveTo(-2, side * (lift * 0.55), -4 - sweep, side * lift);
+        ctx!.quadraticCurveTo(-1.5, side * (lift * 0.4), 1.5, 0);
+        ctx!.closePath();
+        ctx!.fill();
+      }
+      ctx!.restore();
     }
 
     // --- fireworks --------------------------------------------------------
@@ -735,42 +743,39 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         ctx!.fillRect(0, 0, w, skyH);
       }
 
-      // clouds — how many, and how dark, follow the real cloud cover.
-      // Under a heavy overcast they grow larger and denser into a deck
-      // that covers most of the sky band.
+      // clouds — soft, layered puffs with real edges, not flat ellipses.
+      // How many, and how dark, follow the real cloud cover. Under a
+      // heavy overcast they grow larger and denser into a deck that
+      // covers most of the sky band.
       const activeClouds = Math.round((wthr.cloudShown / 100) * clouds.length);
       for (let i = 0; i < activeClouds; i++) {
         const c = clouds[i];
         const cs = c.s * (1 + overcast * 1.1);
-        const ca = 0.55 + overcast * 0.25;
-        ctx!.fillStyle = `rgba(26, 32, 66, ${ca.toFixed(3)})`;
-        ctx!.beginPath();
-        ctx!.ellipse(c.x, c.y, 46 * cs, 13 * cs, 0, 0, Math.PI * 2);
-        ctx!.ellipse(c.x - 30 * cs, c.y + 4 * cs, 30 * cs, 10 * cs, 0, 0, Math.PI * 2);
-        ctx!.ellipse(c.x + 32 * cs, c.y + 5 * cs, 32 * cs, 11 * cs, 0, 0, Math.PI * 2);
-        ctx!.fill();
-        ctx!.fillStyle = `rgba(150, 165, 220, ${(0.1 + overcast * 0.06).toFixed(3)})`;
-        ctx!.beginPath();
-        ctx!.ellipse(c.x, c.y - 4 * cs, 40 * cs, 8 * cs, 0, 0, Math.PI * 2);
-        ctx!.fill();
+        const sprite = cloudSprites[i % cloudSprites.length];
+        ctx!.globalAlpha = 0.6 + overcast * 0.3;
+        ctx!.drawImage(sprite, c.x - 55 * cs, c.y - 25 * cs, 110 * cs, 50 * cs);
+        ctx!.globalAlpha = 1;
       }
 
       // At ≥95% cover a continuous thin cloud sheet lies over the whole
       // sky band — over the moon, the stars and the cloud tops alike —
       // so no clear gap is left for the moon to shine through. It sits
       // under the temple and the birds, and never touches the water or
-      // the krathongs; a couple of slow, soft wisps keep it reading as
-      // cloud rather than a flat wash.
+      // the krathongs. The sheet is a gradient, dense at the top of the
+      // band and thinning toward the horizon, and a couple of slow, soft
+      // wisps keep it reading as cloud rather than a flat wash.
       if (sheet > 0.01) {
-        ctx!.fillStyle = `rgba(24, 30, 62, ${(sheet * 0.5).toFixed(3)})`;
+        const sg = ctx!.createLinearGradient(0, 0, 0, skyH);
+        sg.addColorStop(0, `rgba(24, 30, 62, ${(sheet * 0.55).toFixed(3)})`);
+        sg.addColorStop(1, `rgba(24, 30, 62, ${(sheet * 0.3).toFixed(3)})`);
+        ctx!.fillStyle = sg;
         ctx!.fillRect(0, 0, w, skyH);
-        ctx!.fillStyle = `rgba(120, 134, 175, ${(sheet * 0.1).toFixed(3)})`;
+        ctx!.globalAlpha = sheet * 0.25;
         const wispX = ((t / 90 + w * 0.2) % (w + 400)) - 200;
         const wispX2 = ((t / 130 + w * 0.65) % (w + 400)) - 200;
-        ctx!.beginPath();
-        ctx!.ellipse(wispX, skyH * 0.35, w * 0.3, skyH * 0.16, 0, 0, Math.PI * 2);
-        ctx!.ellipse(wispX2, skyH * 0.62, w * 0.26, skyH * 0.14, 0, 0, Math.PI * 2);
-        ctx!.fill();
+        ctx!.drawImage(cloudSprites[1], wispX - 110, skyH * 0.3, 220, 100);
+        ctx!.drawImage(cloudSprites[2], wispX2 - 90, skyH * 0.58, 180, 82);
+        ctx!.globalAlpha = 1;
       }
 
       // falling stars — hidden behind a heavy overcast, like the real sky
@@ -788,9 +793,9 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
 
       // swifts — in a still frame, three birds hold their place in the sky
       if (reduced) {
-        drawSwift(w * 0.42, h * 0.1, 1200, 0, 0.9);
-        drawSwift(w * 0.45, h * 0.115, 1200, 1.3, 0.9);
-        drawSwift(w * 0.39, h * 0.12, 1200, 2.1, 0.9);
+        drawSwift(w * 0.42, h * 0.1, 1200, 0, 0.9, 1);
+        drawSwift(w * 0.45, h * 0.115, 1200, 1.3, 0.9, 1);
+        drawSwift(w * 0.39, h * 0.12, 1200, 2.1, 0.9, 1);
       } else {
         for (const f of flocks) {
           for (const b of f.birds) {
@@ -800,12 +805,12 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
               t,
               b.phase,
               f.alpha,
+              f.vx >= 0 ? 1 : -1,
             );
           }
         }
       }
 
-      drawTemple(t);
 
       // fireworks above the temple — each rocket climbs with a glowing
       // trail, so the sky is never empty between bursts
@@ -855,13 +860,39 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       }
       ctx!.globalAlpha = 1;
 
-      // water
+      // water — darker on the far side, slightly lighter toward the near
+      // water, and fading into darkness at the very bottom, where the
+      // near bank is. Dark enough throughout that the name tags stay
+      // readable.
       const water = ctx!.createLinearGradient(0, skyH, 0, h);
-      water.addColorStop(0, '#131a44');
-      water.addColorStop(0.55, '#0c1233');
-      water.addColorStop(1, '#080d28');
+      water.addColorStop(0, '#0b1030');
+      water.addColorStop(0.45, '#101838');
+      water.addColorStop(0.8, '#0d1338');
+      water.addColorStop(1, '#04060f');
       ctx!.fillStyle = water;
       ctx!.fillRect(0, skyH, w, h - skyH);
+
+      // the far bank: a low, uneven shoreline, not a straight strip —
+      // dark reeds and grass tufts stand at the water's edge
+      ctx!.fillStyle = '#05070f';
+      ctx!.beginPath();
+      ctx!.moveTo(0, skyH + 8);
+      for (const p of bankPts) ctx!.lineTo(p.x, p.y);
+      ctx!.lineTo(w, skyH + 8);
+      ctx!.closePath();
+      ctx!.fill();
+      ctx!.strokeStyle = 'rgba(5, 7, 15, 0.9)';
+      ctx!.lineWidth = 1.4;
+      for (const tf of tufts) {
+        for (let b = 0; b < tf.blades; b++) {
+          const bx = tf.x + (b - (tf.blades - 1) / 2) * 2.2;
+          const tipX = bx + tf.lean + (b - (tf.blades - 1) / 2) * 1.6;
+          ctx!.beginPath();
+          ctx!.moveTo(bx, tf.y + 2);
+          ctx!.quadraticCurveTo(bx + tf.lean * 0.4, tf.y - tf.h * 0.6, tipX, tf.y - tf.h);
+          ctx!.stroke();
+        }
+      }
 
       // temple glow reflected just below the bank
       for (let i = 0; i < 8; i++) {
@@ -876,17 +907,18 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         ctx!.stroke();
       }
 
-      // moon reflection column — fainter under a heavy overcast, like the
-      // veiled moon itself
-      for (let i = 0; i < 26; i++) {
-        const yy = skyH + (i / 26) * (h - skyH) * 0.92;
-        const spread = 14 + (yy / h) * 46;
-        const a = (0.05 + 0.1 * Math.abs(Math.sin(t / 900 + i * 1.7))) * (1 - overcast * 0.5);
+      // moonlight on the water — short dashes that break and reform,
+      // never a rigid column: each has its own phase, so the path is
+      // never the same shape twice. Fainter under a heavy overcast, like
+      // the veiled moon itself.
+      for (const sh of shimmers) {
+        const tw = 0.35 + 0.65 * Math.abs(Math.sin((t / 1000) * sh.speed + sh.phase));
+        const a = (0.04 + 0.09 * tw) * (1 - overcast * 0.5);
         ctx!.strokeStyle = `rgba(246, 211, 107, ${a.toFixed(3)})`;
         ctx!.lineWidth = 1.4;
         ctx!.beginPath();
-        ctx!.moveTo(mx - spread / 2 + Math.sin(t / 1400 + i) * 6, yy);
-        ctx!.lineTo(mx + spread / 2 + Math.sin(t / 1400 + i) * 6, yy);
+        ctx!.moveTo(sh.x - sh.w / 2, sh.y);
+        ctx!.lineTo(sh.x + sh.w / 2, sh.y);
         ctx!.stroke();
       }
 
@@ -901,15 +933,15 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       }
       ctx!.globalAlpha = 1;
 
-      // drifting ripple lines
-      ctx!.strokeStyle = 'rgba(180, 200, 255, 0.08)';
-      ctx!.lineWidth = 1;
-      for (let i = 0; i < 7; i++) {
-        const yy = h * (0.34 + i * 0.09);
-        const off = (t / 60 + i * 90) % (w + 200) - 100;
+      // the current: long, uneven flow lines drifting downstream, each
+      // with its own length, speed and brightness — never uniform stripes
+      for (const f of flows) {
+        const wob = Math.sin(t / 1600 + f.phase) * 2;
+        ctx!.strokeStyle = `rgba(180, 200, 255, ${f.alpha.toFixed(3)})`;
+        ctx!.lineWidth = 1;
         ctx!.beginPath();
-        ctx!.moveTo(off, yy);
-        ctx!.lineTo(off + 90, yy);
+        ctx!.moveTo(f.x, f.y + wob);
+        ctx!.lineTo(f.x + f.len, f.y + wob);
         ctx!.stroke();
       }
 
@@ -997,6 +1029,31 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         if (now - s.bornAt > 5000) s.fresh = false;
       }
 
+      // the current carries the flow lines downstream, each at its own
+      // speed; the wind hurries them along (drift is the same factor the
+      // krathongs ride on, declared above)
+      for (const f of flows) {
+        f.x += f.spd * drift;
+        if (f.x > w + 10) f.x = -f.len - 10;
+      }
+
+      // faint rings where krathongs sit, coming and going — the water
+      // answers the boats, not just the rain
+      nextAmbientRing -= 16;
+      if (nextAmbientRing <= 0) {
+        nextAmbientRing = 1400 + Math.random() * 2200;
+        const arr = [...sprites.values()];
+        if (arr.length > 0 && rings.length < 28) {
+          const s = arr[Math.floor(Math.random() * arr.length)];
+          rings.push({
+            x: s.x,
+            y: rowY(s.row) + 8 * s.scale,
+            r: 3,
+            max: 14 + Math.random() * 12,
+            a: 0.22,
+          });
+        }
+      }
       // clouds drift with the wind
       const cloudVx = wthr.dirX * (0.08 + wthr.windShown * 0.25);
       for (const c of clouds) {
@@ -1239,5 +1296,16 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     };
   }, []);
 
-  return <canvas ref={ref} aria-label="River of krathongs" role="img" />;
+  // The temple is a detailed SVG illustration layered over the canvas at
+  // the far bank — the same spot the canvas silhouette stood, so the
+  // swifts still fly to it and the fireworks still rise above it. Pointer
+  // events pass through to the canvas.
+  return (
+    <div className="river-scene">
+      <canvas ref={ref} aria-label="River of krathongs" role="img" />
+      <div className="temple-overlay" aria-hidden="true">
+        <WatArunSvg />
+      </div>
+    </div>
+  );
 }

@@ -1,6 +1,6 @@
 // The wish wall: searchable, newest-first cards with reaction buttons.
-// One reaction per type per wish per browser, guarded in localStorage; the
-// server simply counts.
+// One reaction per wish per visitor (Rules: toggleReaction) — the choice
+// lives in the useReactions hook, shared with the pinned wish panel.
 
 'use client';
 
@@ -13,20 +13,15 @@ interface Props {
   wishes: Wish[];
   lang: Lang;
   myWishId: string | null;
+  reacted: Record<string, ReactionId>;
+  onReact: (wishId: string, reaction: ReactionId) => Promise<Wish['reactions'] | null>;
   onReacted: (id: string, counts: Wish['reactions']) => void;
 }
 
-export default function WishWall({ wishes, lang, myWishId, onReacted }: Props) {
+export default function WishWall({ wishes, lang, myWishId, reacted, onReact, onReacted }: Props) {
   const s = t(lang);
   const [query, setQuery] = useState('');
   const [showTranslation, setShowTranslation] = useState<Record<string, boolean>>({});
-  const [reacted, setReacted] = useState<Record<string, ReactionId[]>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('loy:reacted') ?? '{}') as Record<string, ReactionId[]>;
-    } catch {
-      return {};
-    }
-  });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -40,27 +35,8 @@ export default function WishWall({ wishes, lang, myWishId, onReacted }: Props) {
   }, [wishes, query]);
 
   async function react(wish: Wish, reaction: ReactionId) {
-    const mine = reacted[wish.id] ?? [];
-    if (mine.includes(reaction)) return;
-    try {
-      const res = await fetch(`/api/wishes/${wish.id}/react`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reaction }),
-      });
-      if (!res.ok) return;
-      const data = (await res.json()) as { reactions: Wish['reactions'] };
-      const next = { ...reacted, [wish.id]: [...mine, reaction] };
-      setReacted(next);
-      try {
-        localStorage.setItem('loy:reacted', JSON.stringify(next));
-      } catch {
-        // private mode: the reaction still counted
-      }
-      onReacted(wish.id, data.reactions);
-    } catch {
-      // offline: leave the button as-is
-    }
+    const counts = await onReact(wish.id, reaction);
+    if (counts) onReacted(wish.id, counts);
   }
 
   return (
@@ -85,7 +61,7 @@ export default function WishWall({ wishes, lang, myWishId, onReacted }: Props) {
         <div className="wall">
           {filtered.map((w) => {
             const showingTranslation = !!showTranslation[w.id] && !!w.translation;
-            const mine = reacted[w.id] ?? [];
+            const mine = reacted[w.id] ?? null;
             return (
               <article className="wish-card" key={w.id}>
                 <div className="wc-top">
@@ -111,7 +87,7 @@ export default function WishWall({ wishes, lang, myWishId, onReacted }: Props) {
                       key={r.id}
                       type="button"
                       className="react-btn"
-                      aria-pressed={mine.includes(r.id)}
+                      aria-pressed={mine === r.id}
                       aria-label={`${r.label[lang]} — ${w.reactions[r.id]}`}
                       onClick={() => react(w, r.id)}
                     >

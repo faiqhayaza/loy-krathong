@@ -132,6 +132,13 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .dest:hover { border-color: var(--line); transform: translateY(-2px); }
 .dest.stamped { border-color: var(--gold); background: linear-gradient(180deg, rgba(232, 179, 75, 0.16), rgba(232, 179, 75, 0.05)); }
+.dest.visited { border-color: var(--line); }
+.dest.locked { opacity: 0.55; cursor: default; }
+.dest.locked:hover { border-color: var(--line-soft); transform: none; }
+.dest .dest-top { display: flex; justify-content: space-between; align-items: center; }
+.dest .dest-icon { font-size: 20px; line-height: 1; }
+.dest .dest-night { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.dest.locked .dest-cta { color: var(--muted); }
 .dest .dest-name { font-family: var(--display); font-weight: 600; font-size: 16px; color: var(--cream); }
 .dest .dest-name .th { display: block; font-weight: 400; font-size: 13px; color: var(--pink); }
 .dest .dest-river { font-size: 12.5px; color: var(--muted); }
@@ -150,6 +157,16 @@ button, input, textarea { font: inherit; color: inherit; }
 @media (min-width: 960px) { .layout { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); } }
 .river-wrap { position: relative; border-radius: 20px; overflow: hidden; border: 1px solid var(--line-soft); background: #0a1030; }
 .river-wrap canvas { display: block; width: 100%; height: 480px; cursor: crosshair; }
+/* The river scene: canvas plus the Wat Arun SVG illustration layered over
+   the far bank. The overlay box is positioned so the temple's base lands
+   exactly on the canvas horizon (28% of the height) and its centre at
+   30% of the width — the same spot the old canvas silhouette stood.
+   Pointer events pass through to the canvas below. */
+.river-scene { position: relative; }
+.temple-overlay { position: absolute; left: 1.5%; right: 38%; top: 8%; bottom: 54%; pointer-events: none; }
+.temple-overlay svg { width: 100%; height: 100%; display: block; }
+.temple-window { animation: window-glow 3.2s ease-in-out infinite; }
+@keyframes window-glow { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 @media (min-width: 960px) { .river-wrap canvas { height: 560px; } }
 .river-bar {
   position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between;
@@ -238,6 +255,56 @@ button, input, textarea { font: inherit; color: inherit; }
 .success strong { color: #bfe8c9; }
 .success p { font-size: 14px; color: #d8e8d5; }
 
+/* Daily stamps — ten slots, earned ones filled gold */
+.stamps {
+  border: 1px solid var(--line-soft); border-radius: 14px; padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03); display: flex; flex-direction: column; gap: 8px;
+}
+.stamps-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.stamps-head h3 { font-size: 15px; color: var(--cream); }
+.stamps-count { font-weight: 700; color: var(--gold-soft); font-size: 13.5px; white-space: nowrap; }
+.stamps-hint { color: var(--muted); font-size: 12.5px; }
+.stamp-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+@media (min-width: 560px) { .stamp-row { grid-template-columns: repeat(10, 1fr); } }
+.stamp-slot {
+  aspect-ratio: 1; border-radius: 50%; border: 1.5px dashed rgba(239, 232, 216, 0.3);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--muted); min-width: 0;
+}
+.stamp-slot .stamp-num { font-weight: 700; }
+.stamp-slot.earned {
+  border-style: solid; border-color: var(--gold);
+  background: radial-gradient(circle at 50% 35%, rgba(246, 211, 107, 0.38), rgba(232, 179, 75, 0.12));
+  color: var(--gold-soft);
+  animation: stamp-in 0.35s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+.stamp-slot .stamp-glyph { font-size: 17px; line-height: 1.1; }
+.stamp-slot .stamp-date { font-size: 9.5px; color: var(--muted); white-space: nowrap; }
+.stamps-complete { font-size: 13.5px; font-weight: 600; color: var(--gold-soft); }
+.already {
+  border-radius: 12px; border: 1px solid var(--line); background: rgba(232, 179, 75, 0.08);
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;
+}
+.already strong { color: var(--cream); }
+.already p { font-size: 14px; color: #d8d2ea; }
+
+/* Crisis rail: plain, calm, and unmistakably not a poem. */
+.crisis {
+  border-radius: 12px; border: 1px solid #8fa8d8; background: rgba(143, 168, 216, 0.1);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;
+}
+.crisis strong { color: var(--cream); font-size: 16px; }
+.crisis p { font-size: 14px; line-height: 1.6; color: #d8d2ea; }
+
+/* One emoji of your own, as a krathong flower. */
+.custom-flower { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.custom-flower label { font-size: 13px; font-weight: 600; color: var(--cream); }
+.custom-flower input {
+  width: 72px; text-align: center; font-size: 22px; padding: 6px 8px;
+  border-radius: 12px; border: 1px solid var(--line-soft); background: rgba(255, 255, 255, 0.04); color: var(--ink);
+}
+.custom-flower input.active { border-color: var(--gold); background: rgba(232, 179, 75, 0.14); }
+
 /* Reactions */
 .reactions { display: flex; gap: 6px; flex-wrap: wrap; }
 .react-btn {
@@ -266,12 +333,6 @@ button, input, textarea { font: inherit; color: inherit; }
 .wish-card .wc-trans { font-size: 13.5px; color: var(--muted); border-top: 1px dashed var(--line-soft); padding-top: 8px; }
 .wish-card .wc-trans button { background: none; border: 0; color: var(--gold-soft); cursor: pointer; padding: 0; font-size: 12.5px; font-weight: 600; }
 .mine-badge { font-size: 11px; font-weight: 700; color: var(--gold-deep); background: var(--gold-soft); border-radius: 999px; padding: 2px 8px; }
-
-/* Footer */
-.footer { margin-top: 64px; border-top: 1px solid var(--line-soft); padding-top: 24px; display: flex; flex-direction: column; gap: 12px; }
-.footer h2 { font-size: 18px; color: var(--cream); }
-.footer p { color: var(--muted); max-width: 72ch; font-size: 14.5px; }
-.footer .foot-line { color: var(--gold-soft); font-family: var(--display); font-size: 14px; }
 
 /* Reveal on scroll */
 .reveal { opacity: 0; transform: translateY(14px); transition: opacity 0.5s ease, transform 0.5s ease; }

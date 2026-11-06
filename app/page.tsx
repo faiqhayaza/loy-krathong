@@ -2,17 +2,25 @@
 // countdown, the seven-night passport strip, the shared river, the builder,
 // and the wish wall. All wishes come from GET /api/wishes, shared by every
 // visitor; the passport and language choice stay on this device only.
+//
+// The passport follows the Rules of the original site: a destination opens
+// on its festival night (18–24 November, Bangkok day), a visit is recorded
+// first, and only a visited destination can be stamped (collectStamp).
+// Before the festival every destination is locked; in the archive phase
+// (up to 14 days after the last night) they all stay open.
 
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Lang, ReactionId, Wish } from '@/lib/data';
-import { DESTINATIONS, REACTIONS, flowerGlyph } from '@/lib/data';
-import { t } from '@/lib/i18n';
+import { DESTINATIONS, REACTIONS, STAMP_ICON, flowerGlyph } from '@/lib/data';
+import { calendar, isOpenDay } from '@/lib/festival';
+import { shortDate, t } from '@/lib/i18n';
 import SkyCanvas from '@/components/SkyCanvas';
 import RiverCanvas from '@/components/RiverCanvas';
 import Builder from '@/components/Builder';
 import WishWall from '@/components/WishWall';
+import { useReactions } from '@/components/useReactions';
 
 const FESTIVAL_AT = Date.UTC(2026, 10, 24, 12, 0, 0); // 19:00 Asia/Bangkok
 
@@ -41,6 +49,32 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
+function saveLocal(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // keepsake only; the river is unaffected
+  }
+}
+
+/**
+ * The passport stamps, with a one-time migration from the first version of
+ * the strip: it stamped any destination on a tap, with a different set of
+ * places. 'chiang-mai' becomes the original slug 'chiang_mai'; stamps for
+ * places that were never festival destinations are dropped. Stamps that
+ * survive are grandfathered in — and count as visits, so the state machine
+ * stays coherent for them — while every new stamp follows the Rules.
+ */
+function loadStamps(): string[] {
+  const raw = load<string[]>('loy:stamps', []);
+  const valid = new Set(DESTINATIONS.map((d) => d.id));
+  const mapped = [...new Set(raw.map((id) => (id === 'chiang-mai' ? 'chiang_mai' : id)).filter((id) => valid.has(id)))];
+  if (mapped.length !== raw.length || mapped.some((id, i) => id !== raw[i])) {
+    saveLocal('loy:stamps', mapped);
+  }
+  return mapped;
+}
+
 export default function Page() {
   const [lang, setLang] = useState<Lang>(() => {
     if (typeof window === 'undefined') return 'en';
@@ -55,7 +89,15 @@ export default function Page() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [hover, setHover] = useState<{ wish: Wish; x: number; y: number } | null>(null);
   const [pinned, setPinned] = useState<Wish | null>(null);
-  const [stamps, setStamps] = useState<string[]>(() => load<string[]>('loy:stamps', []));
+  const [stamps, setStamps] = useState<string[]>(() => loadStamps());
+  // Visits are the other half of the passport rule: a stamp can only be
+  // collected after the destination has been visited. Grandfathered stamps
+  // count as visits (see loadStamps).
+  const [visits, setVisits] = useState<string[]>(() => [
+    ...new Set([...load<string[]>('loy:visits', []), ...loadStamps()]),
+  ]);
+  const cal = calendar();
+  const { reacted, toggleReaction } = useReactions();
   const [myWishId, setMyWishId] = useState<string | null>(() =>
     typeof window === 'undefined' ? null : load<string | null>('loy:my-wish', null),
   );
@@ -131,15 +173,26 @@ export default function Page() {
     }
   }
 
-  function stamp(id: string) {
+  // Passport, per the Rules: visit first (recordVisit), then collect
+  // (collectStamp) — and only while the destination's night is open.
+  function visit(id: string) {
+    if (visits.includes(id)) return;
+    const next = [...visits, id];
+    setVisits(next);
+    saveLocal('loy:visits', next);
+  }
+
+  function collectStamp(id: string) {
     if (stamps.includes(id)) return;
     const next = [...stamps, id];
     setStamps(next);
-    try {
-      localStorage.setItem('loy:stamps', JSON.stringify(next));
-    } catch {
-      // keepsake only; the river is unaffected
-    }
+    saveLocal('loy:stamps', next);
+  }
+
+  function onDestination(d: (typeof DESTINATIONS)[number]) {
+    if (!isOpenDay(cal, d.day) || stamps.includes(d.id)) return;
+    if (!visits.includes(d.id)) visit(d.id);
+    else collectStamp(d.id);
   }
 
   function refreshRiver() {
@@ -166,18 +219,8 @@ export default function Page() {
   }
 
   async function reactPinned(wish: Wish, reaction: ReactionId) {
-    try {
-      const res = await fetch(`/api/wishes/${wish.id}/react`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reaction }),
-      });
-      if (!res.ok) return;
-      const data = (await res.json()) as { reactions: Wish['reactions'] };
-      updateWishReactions(wish.id, data.reactions);
-    } catch {
-      // offline: the wish is still there
-    }
+    const counts = await toggleReaction(wish.id, reaction);
+    if (counts) updateWishReactions(wish.id, counts);
   }
 
   return (
@@ -248,22 +291,32 @@ export default function Page() {
         <div className="dest-strip">
           {DESTINATIONS.map((d) => {
             const done = stamps.includes(d.id);
+            const visited = visits.includes(d.id);
+            const open = isOpenDay(cal, d.day);
+            const state = done ? 'stamped' : !open ? 'locked' : visited ? 'visited' : 'open';
             return (
               <button
                 key={d.id}
                 type="button"
-                className={`dest${done ? ' stamped' : ''}`}
-                aria-pressed={done}
-                onClick={() => stamp(d.id)}
+                className={`dest ${state}`}
+                disabled={!open || done}
+                aria-label={`${d.name[lang]} — ${state === 'stamped' ? s.stamped : state === 'locked' ? s.destOpens(shortDate(cal.dates[d.day - 1], lang)) : state === 'visited' ? s.destVisited : s.destVisit}`}
+                onClick={() => onDestination(d)}
               >
+                <span className="dest-top">
+                  <span className="dest-icon" aria-hidden="true">{STAMP_ICON[d.id]}</span>
+                  <span className="dest-night">{s.destNight(d.day)}</span>
+                </span>
                 {done && <span className="dest-stamp">{s.stamped}</span>}
                 <span className="dest-name">
                   {d.name[lang]}
                   <span className="th" lang="th">{d.name.th}</span>
                 </span>
                 <span className="dest-river">{d.river[lang]}</span>
-                <span className="dest-note">{d.note[lang]}</span>
-                <span className="dest-cta">{done ? '✓' : s.stampCollect}</span>
+                <span className="dest-note">{d.theme[lang]}</span>
+                <span className="dest-cta">
+                  {done ? '✓' : !open ? s.destOpens(shortDate(cal.dates[d.day - 1], lang)) : visited ? s.stampCollect : s.destVisit}
+                </span>
               </button>
             );
           })}
@@ -344,6 +397,7 @@ export default function Page() {
                       key={r.id}
                       type="button"
                       className="react-btn"
+                      aria-pressed={reacted[pinned.id] === r.id}
                       aria-label={`${r.label[lang]} — ${pinned.reactions[r.id]}`}
                       onClick={() => reactPinned(pinned, r.id)}
                     >
@@ -367,14 +421,8 @@ export default function Page() {
         <div className="section-head">
           <h2 id="wall-title">{s.wallTitle}</h2>
         </div>
-        <WishWall wishes={wishes} lang={lang} myWishId={myWishId} onReacted={updateWishReactions} />
+        <WishWall wishes={wishes} lang={lang} myWishId={myWishId} reacted={reacted} onReact={toggleReaction} onReacted={updateWishReactions} />
       </section>
-
-      <footer className="footer reveal">
-        <h2>{s.privacyTitle}</h2>
-        <p>{s.privacyBody}</p>
-        <p className="foot-line">{s.footerLine}</p>
-      </footer>
     </div>
   );
 }

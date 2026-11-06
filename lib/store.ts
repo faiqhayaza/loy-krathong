@@ -10,10 +10,12 @@ import { Redis } from '@upstash/redis';
 import type { ReactionCounts, ReactionId, Wish } from './data';
 import { EMPTY_REACTIONS } from './data';
 import { SEED_WISHES } from './seed';
+import { msUntilBangkokMidnight } from './bangkok';
 
 const WISHES_KEY = 'loy:wishes';
 const REACTIONS_KEY = (id: string) => `loy:reactions:${id}`;
 const RATE_KEY = (ip: string) => `loy:rl:${ip}`;
+const DAILY_KEY = (ip: string, day: string) => `loy:daily:${ip}:${day}`;
 
 const MAX_STORED = 200;
 const POSTS_PER_MINUTE = 5;
@@ -51,6 +53,7 @@ export function usingRedis(): boolean {
 const memWishes: Wish[] = [];
 const memReactions = new Map<string, ReactionCounts>();
 const memRate = new Map<string, { count: number; resetAt: number }>();
+const memDaily = new Map<string, number>(); // key -> ms timestamp when the day slot expires
 
 // ---- Reads ---------------------------------------------------------------
 
@@ -160,25 +163,39 @@ export async function addWish(wish: Wish): Promise<void> {
   if (memWishes.length > MAX_STORED) memWishes.length = MAX_STORED;
 }
 
-export async function addReaction(id: string, reaction: ReactionId): Promise<ReactionCounts | null> {
+/**
+ * One reaction per wish per visitor (Rules: toggleReaction in the original
+ * site). The client sends the reaction it is moving FROM (or null) and the
+ * one it is moving TO (or null); the counts move by one in each direction,
+ * never below zero. Setting the same reaction twice removes it.
+ */
+export async function setReaction(
+  id: string,
+  previous: ReactionId | null,
+  next: ReactionId | null,
+): Promise<ReactionCounts | null> {
   const client = getRedis();
   if (client) {
     try {
-      await client.hincrby(REACTIONS_KEY(id), reaction, 1);
       const row = (await client.hgetall(REACTIONS_KEY(id))) as Record<string, string>;
-      return {
+      const counts: ReactionCounts = {
         sathu: Number(row.sathu ?? 0) || 0,
         love: Number(row.love ?? 0) || 0,
         hug: Number(row.hug ?? 0) || 0,
         care: Number(row.care ?? 0) || 0,
         peace: Number(row.peace ?? 0) || 0,
       };
+      if (previous) counts[previous] = Math.max(0, counts[previous] - 1);
+      if (next) counts[next] += 1;
+      await client.hset(REACTIONS_KEY(id), { ...counts } as Record<string, number>);
+      return counts;
     } catch (err) {
       console.error('[loy] Redis reaction write failed:', err);
     }
   }
   const current = memReactions.get(id) ?? { ...EMPTY_REACTIONS };
-  current[reaction] += 1;
+  if (previous) current[previous] = Math.max(0, current[previous] - 1);
+  if (next) current[next] += 1;
   memReactions.set(id, current);
   return { ...current };
 }
@@ -237,4 +254,33 @@ export async function checkRateLimit(ip: string): Promise<boolean> {
   }
   entry.count += 1;
   return entry.count <= POSTS_PER_MINUTE;
+}
+
+// ---- Daily limit (one float per day, Bangkok day) -------------------------
+
+/**
+ * One float per Bangkok day per IP, like the original site. The first call
+ * for an IP on a day claims that day's slot and returns true; any later
+ * call the same day returns false. Redis: SET NX with expiry to the next
+ * Bangkok midnight, so the key cleans itself up. In-memory fallback:
+ * same rule, same expiry. A Redis error falls back to memory rather than
+ * blocking the river — the limit is a fairness rule, not a security gate.
+ */
+export async function checkDailyLimit(ip: string, day: string): Promise<boolean> {
+  const key = DAILY_KEY(ip, day);
+  const ttlSeconds = Math.max(1, Math.ceil(msUntilBangkokMidnight() / 1000));
+  const client = getRedis();
+  if (client) {
+    try {
+      const claimed = await client.set(key, '1', { nx: true, ex: ttlSeconds });
+      return claimed === 'OK';
+    } catch (err) {
+      console.error('[loy] Redis daily-limit check failed, using memory:', err);
+    }
+  }
+  const now = Date.now();
+  const expiresAt = memDaily.get(key);
+  if (expiresAt !== undefined && now < expiresAt) return false;
+  memDaily.set(key, now + msUntilBangkokMidnight(now));
+  return true;
 }

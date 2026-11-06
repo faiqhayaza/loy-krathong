@@ -150,8 +150,34 @@ export function isKnownReaction(id: string): id is ReactionId {
   return REACTIONS.some((r) => r.id === id);
 }
 
+/**
+ * One picture emoji that is allowed on a krathong (Rules: isAllowedCustomEmoji
+ * in the original site). Exactly one grapheme, pictographic, no letters or
+ * numbers, and not on the blocked list.
+ */
+export function isAllowedCustomEmoji(value: string): boolean {
+  const text = value.trim();
+  if (text === '' || text.length > 16) return false;
+  let graphemes: number;
+  try {
+    graphemes = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].length;
+  } catch {
+    graphemes = Array.from(text).length;
+  }
+  if (graphemes !== 1) return false;
+  if (!/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(text)) return false;
+  if (/[\p{L}\p{N}]/u.test(text)) return false;
+  const base = text
+    .replace(/[\u{1F3FB}-\u{1F3FF}]/gu, '')
+    .split('\uFE0F')
+    .join('');
+  return !BLOCKED_EMOJI.has(base);
+}
+
 export function flowerGlyph(id: string): string {
-  return FLOWERS.find((f) => f.id === id)?.glyph ?? '🪷';
+  const flower = FLOWERS.find((f) => f.id === id);
+  if (flower) return flower.glyph;
+  return isAllowedCustomEmoji(id) ? id.trim() : '🪷';
 }
 export function boatColors(id: string): [string, string] {
   return BOATS.find((b) => b.id === id)?.colors ?? BOATS[0].colors;
@@ -160,19 +186,8 @@ export function flameColor(id: string): string {
   return FLAMES.find((f) => f.id === id)?.color ?? '#ffb347';
 }
 
-export interface Destination {
-  id: string;
-  name: { en: string; th: string };
-  river: { en: string; th: string };
-  note: { en: string; th: string };
-}
-
-export const DESTINATIONS: Destination[] = [
-  { id: 'bangkok', name: { en: 'Bangkok', th: 'กรุงเทพฯ' }, river: { en: 'Chao Phraya River', th: 'แม่น้ำเจ้าพระยา' }, note: { en: 'Where the river meets the city lights', th: 'สายน้ำกับแสงไฟของเมือง' } },
-  { id: 'sukhothai', name: { en: 'Sukhothai', th: 'สุโขทัย' }, river: { en: 'Yom River', th: 'แม่น้ำยม' }, note: { en: 'Where the festival began, eight centuries ago', th: 'ต้นกำเนิดของเทศกาลเมื่อแปดร้อยปีก่อน' } },
-  { id: 'chiang-mai', name: { en: 'Chiang Mai', th: 'เชียงใหม่' }, river: { en: 'Ping River', th: 'แม่น้ำปิง' }, note: { en: 'Home of Yi Peng and its sky full of lanterns', th: 'บ้านของยี่เป็งและท้องฟ้าที่เต็มไปด้วยโคม' } },
-  { id: 'ayutthaya', name: { en: 'Ayutthaya', th: 'อยุธยา' }, river: { en: 'Chao Phraya River', th: 'แม่น้ำเจ้าพระยา' }, note: { en: 'Krathongs drifting past old temple walls', th: 'กระทงลอยผ่านกำแพงวัดเก่า' } },
-  { id: 'tak', name: { en: 'Tak', th: 'ตาก' }, river: { en: 'Ping River', th: 'แม่น้ำปิง' }, note: { en: 'Krathong Sai — a thousand coconut-shell lamps, one chain of light', th: 'ลอยกระทงสาย — กะลานับพันดวงเป็นสายแสงเดียว' } },
-  { id: 'phitsanulok', name: { en: 'Phitsanulok', th: 'พิษณุโลก' }, river: { en: 'Nan River', th: 'แม่น้ำน่าน' }, note: { en: 'Lanterns under the shadow of Wat Phra Si Rattana Mahathat', th: 'โคมใต้เงาวัดพระศรีรัตนมหาธาตุ' } },
-  { id: 'samut-songkhram', name: { en: 'Samut Songkhram', th: 'สมุทรสงคราม' }, river: { en: 'Mae Klong River', th: 'แม่น้ำแม่กลอง' }, note: { en: 'Where the river runs out to the sea', th: 'ที่ที่สายน้ำไหลออกสู่ทะเล' } },
-];
+// The seven destinations live in lib/destinations.ts, ported verbatim from
+// the original site. They are re-exported here so existing imports keep
+// working.
+export { DESTINATIONS, SPECIAL_ICON, STAMP_ICON } from './destinations';
+export type { Destination } from './destinations';

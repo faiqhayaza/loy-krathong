@@ -305,20 +305,296 @@ show length (60 s), colours, cadence and caps untouched.)
   `prefers-reduced-motion` and the page is fully usable without them
   (the wish wall and builder are plain DOM).
 
+## Overnight round, 2026-11-06 ~22:03–23:30 — Rules recheck + river/temple/birds/clouds
+
+Faiq's correction (~22:07): "follow the rule on the HTML as well, recheck
+it." The Rules block of the original (`~line 2566`, ported from
+`lib/festival/schedule.ts`, `where.ts`, `domains/festival.ts`,
+`content.ts`) and the festival sections it rests on are now the spec.
+Nothing was pushed or deployed in this round — the tree is ready for
+review, push and deploy. No new runtime dependencies.
+
+### Build
+
+`npm run build` — **pass, clean** (TypeScript strict + lint), run twice
+during the round and once at the end. First Load JS for `/`: 120 kB.
+
+### What changed, per item
+
+**1. Privacy footer removed.** `app/page.tsx`: the `<footer>` block is
+gone (it was already removed in the earlier part of this round, with the
+`privacyTitle` / `privacyBody` / `footerLine` keys and the `.footer` CSS).
+The worry field and its note in the builder are untouched; the worry is
+still never sent or stored.
+
+**2. Once-per-day floating** — unchanged from the earlier part of this
+round (server `loy:daily:<ip>:<YYYY-MM-DD>` Redis key, expiry to next
+Bangkok midnight, in-memory fallback; 429 `{error: 'daily_limit'}`; client
+`loy:floated-day` + friendly already-floated state). Re-checked against
+the Rules: the HTML keys the slot on a `float_slot` event for the Bangkok
+day and returns `errorDailyLimit` — the rebuild's Redis key + 429 body is
+the same rule on the shared server. Two Rules details NOT restored, see
+the audit list below (owner-delete refunds the slot; the HTML's
+`config.shared` / kiosk bypasses have no equivalent — the shared site
+always enforces).
+
+**3. Ten daily stamps + confetti** — unchanged from the earlier part of
+this round (`loy:floated-day`, `loy:daily-stamps`, max 10, auto-awarded on
+float, confetti only at the 10th). The HTML's stamps are per-destination
+(a different system); the daily stamps remain Faiq's new design.
+
+**Rules recheck — restored in this round (mechanical, small):**
+
+- **Festival calendar** (`lib/festival.ts`, new): `festivalCalendar`,
+  `canEarn`, `canClaim`, `isOpenDay`, `isOpen`, `defaultDestination`,
+  `ARCHIVE_CLAIM_DAYS = 14`, start day 2026-11-18, mode `none`. Phases
+  before / live / archive (claim until 2026-12-08) / closed, ported from
+  the HTML. Verified in node: 2026-11-06 → before, 0 opened;
+  2026-11-18 → live day 1, Bangkok open, Sukhothai closed; 2026-11-24 →
+  live day 7; 2026-12-01 → archive, claim until 2026-12-08; 2026-12-09 →
+  closed, cannot claim. `bangkokDay` rollover verified: 16:59Z → 2026-11-06,
+  17:00Z → 2026-11-07.
+- **Destinations corrected** (`lib/destinations.ts`, new, generated
+  verbatim from the HTML): the rebuild had the wrong seven — Phitsanulok
+  and Samut Songkhram in place of Amphawa and Roi Et, wrong order, and the
+  `chiang-mai` slug. Now the HTML's seven with day 1–7, `STAMP_ICON`
+  (🛕🪷🏮🕯️🌙✨🌕), `SPECIAL_ICON`, and the full record per destination
+  (theme, story, welcome, special kind/title/detail, milestone,
+  secret) so a future missions/secrets restore is a UI job, not a content
+  job. Scene fields (lat/lon, palette, ambience) dropped — one river scene.
+- **Passport visit/collect** (`app/page.tsx`, `app/globals.css`): the
+  strip used to stamp any destination on a tap, any day — the Rules say a
+  stamp needs a visit first (`collectStamp` requires a `visit_place`
+  event) and the night to be open (`isOpenDay`). Now: tap once to visit,
+  tap again to collect; locked nights show "Opens 18 Nov" etc. and are
+  disabled. Consequence: before 18 November every destination is locked.
+  Migration: `loy:stamps` entries are mapped (`chiang-mai` →
+  `chiang_mai`; Phitsanulok/Samut Songkhram dropped) and surviving stamps
+  count as visits, so nobody loses a keepsake; new stamps follow the Rules.
+- **Blessing generator** (`lib/blessing.ts`, new): `templateBlessing` with
+  the HTML's 8 THEMES, OPENINGS, CLOSINGS, GENERIC, WISH_LINE, ported
+  verbatim. The success panel now shows a blessing composed in the browser
+  from the worry + wish (reply in the language written in), instead of one
+  of two static lines — the worry hint already promised this ("used on your
+  device to write your blessing"). Verified in node: a work worry returns
+  the work theme line + wish line + closing; Thai text returns Thai.
+- **Crisis rail** (`lib/crisis.ts`, new): `isCrisis` with the HTML's 74
+  detection terms verbatim (Latin word-boundary, Thai substring, collapsed
+  ≥6 chars). Verified in node: "I want to die", "s u i c i d e",
+  "s.u.i.c.i.d.e", Thai อยากตาย / ถูกข่มขืน all trigger; "I wish for
+  grapes" does not (the `rape`-in-`grapes` guard works); a plain worry does
+  not. The message shown is NOT the HTML's — that one was written for Meta
+  employees (Lyra EAP, internal links). The public message points at
+  Thailand's free mental-health hotline 1323 (24h) and emergency 1669 /
+  191. The check runs client-side at float time; the text is never logged,
+  sent or stored; the wish still floats.
+- **Reaction toggle** (`lib/store.ts` `setReaction`, `app/api/wishes/[id]/react/route.ts`,
+  `components/useReactions.ts` new, `components/WishWall.tsx`,
+  `app/page.tsx`): the Rules say one reaction per wish per visitor, tapping
+  it again removes it (`toggleReaction`). The rebuild let a visitor give all
+  five reactions to one wish — and the pinned panel had no guard at all, so
+  every click added one. Now the client sends `{reaction, previous}` and the
+  server moves both counts by one (never below zero). Old `loy:reacted`
+  arrays migrate to a single reaction (first entry).
+- **Custom emoji flower** (`lib/data.ts` `isAllowedCustomEmoji`,
+  `flowerGlyph`, `components/Builder.tsx`, `app/api/wishes/route.ts`):
+  one pictographic emoji of the visitor's own can be the krathong flower
+  (Rules: `isAllowedCustomEmoji`). Anything else falls back to lotus, on
+  the client and the server. Verified live: 🦋 stored; `A` fell back to
+  lotus. Flows through the krathong preview, the river canvas and the
+  keepsake card via `flowerGlyph`.
+
+**4. Natural river** (`components/RiverCanvas.tsx`): water gradient
+reworked (dark far side, slightly lighter near water, fading into darkness
+at the bottom); an irregular far bank — a low uneven shoreline with dark
+reed/grass tufts at the water's edge, seeded once per resize so it never
+jitters, kept clear of the temple; a living current — 16 flow lines, each
+with its own length (40–170px), speed and brightness, drifting downstream
+with the wind; moonlight shimmer as 18 short dashes with independent
+phases that break and reform instead of a rigid column; faint rings where
+krathongs sit (every ~1.4–3.6s, at a random krathong) in addition to the
+rain rings. Name tags stay readable: the water is dark throughout, shimmer
+alpha ≤ 0.13. Kept: krathongs, tags, hover tooltip, click-to-pin, splash +
+rising lantern, sky, moon, stars, falling stars, swifts, weather,
+fireworks, reduced-motion frame, resize, DPR cap 2.
+
+**5. Temple, birds, clouds:**
+
+- **Temple** (`components/WatArunSvg.tsx`, new; `components/RiverCanvas.tsx`
+  no longer draws its own temple): a detailed inline SVG illustration —
+  central prang with the concave lotus-bud profile, trident finial and
+  three terraces, four satellite prangs stepping down, tiered sala roofs
+  with gold eave lines, a base platform with lit niches, porcelain-mosaic
+  texture (small light/dark tile pattern, not flat black), arched niches
+  glowing warm gold (gently pulsing), a faint warm glow behind the spire,
+  and a soft reflection in the water (flipped, squashed, fading as it
+  sinks). Layered over the canvas in `.temple-overlay`, positioned so the
+  base lands exactly on the canvas horizon and the centre at 30% of the
+  river width — the same spot the silhouette stood, so swifts still fly to
+  it and fireworks still rise above it. Self-contained, no external image.
+- **Birds**: `drawSwift` rewritten — slim body, swept sickle wings, forked
+  tail, a real flap cycle (wing tips rise with `sin(t/110)` and sweep
+  further back as they fall), oriented by flight direction. The old "m"
+  stroke is gone.
+- **Clouds**: pre-rendered offscreen sprites (3 variants, 7 layered
+  radial-gradient puffs each with soft edges + a faint moonlit top),
+  drawn with `drawImage` — no per-frame gradient allocation. The
+  ≥95% overcast sheet is now a vertical gradient (dense at the top of the
+  sky band, thinning toward the horizon) with two slow sprite wisps
+  instead of flat ellipses. Overcast deck behaviour unchanged (count and
+  size follow real cloud cover; moon/stars veil the same way).
+
+### Live API tests (dev server, no Redis configured → in-memory store)
+
+Started with `PORT=3107 npx next dev -p 3107`. The dev store is the
+in-memory fallback; the live Redis path is the same code behind
+`getRedis()` and was verified live in earlier rounds. Test wishes lived
+only in the dev server's memory and died with it — the live river was
+not touched.
+
+| Check | Result |
+|---|---|
+| POST wish, IP 203.0.113.10 | 201, wish stored |
+| POST again, same IP, same day | **429 `{error: 'daily_limit'}`** |
+| POST, different IP 203.0.113.20 | 201 |
+| POST with flower 🦋 | 201, flower stored as 🦋 |
+| POST with flower `A` | 201, flower fell back to `lotus` |
+| POST react `{reaction:'love', previous:null}` | love 0 → 1 |
+| POST react `{reaction:null, previous:'love'}` | love 1 → 0 (toggle off) |
+| POST react `{reaction:'sathu', previous:null}` | sathu 0 → 1 |
+| POST react `{reaction:'love', previous:'sathu'}` | sathu 1 → 0, love 0 → 1 |
+| POST react `{reaction:'nope'}` | 400 `unknown_reaction` |
+| GET /api/wishes | 3 wishes, storage `memory` |
+| GET / (homepage) | 200; SSR HTML contains the temple SVG (`wat-prang` ×11), 7 destination cards with Night 1–7 and "Opens 18 Nov" … "Opens 24 Nov", and the daily-stamps strip |
+
+### Node unit checks (compiled lib files, no browser)
+
+- Crisis: 8/8 pass (positives, spaced/dotted forms, Thai terms, the
+  `grapes` false-positive guard, plain worry, empty).
+- Blessing: work worry → work theme line + wish line + closing, ends 🪷;
+  Thai text → Thai blessing, two theme lines matched.
+- Custom emoji: 🦋 allowed, `A` rejected, two emoji rejected, 🍆 blocked,
+  👋🏽 (skin tone) allowed; `flowerGlyph` returns the emoji or 🪷.
+- Calendar: 16/16 pass (phases, opened days, `isOpenDay`, `canEarn`,
+  `canClaim`, claimUntil 2026-12-08, `bangkokDay` rollover at 17:00Z).
+
+### Honest limits (unchanged, restated)
+
+- Daily stamps live in the browser (`loy:daily-stamps`); clearing browser
+  data loses them. The server daily limit is per IP, so people sharing one
+  Wi-Fi/network address share that day's server slot — the same trade-off
+  the original had.
+- **No live-browser visual check was possible from here.** The build, the
+  API and the pure logic are verified above; the temple illustration, the
+  river, the birds and the clouds need eyes on the deployed site in the
+  morning. In particular: the SVG temple's proportions at desktop vs
+  mobile widths (it stretches with the overlay box, as the canvas temple
+  did), and whether the passport's locked-until-the-18th state reads well.
+- Reaction counts already on the live river include the extra reactions
+  the old five-at-once behaviour allowed; the toggle only governs new
+  reactions — old counts are not recomputed.
+- The crisis rail only fires on the worry/wish the visitor types at float
+  time; it does not scan wishes already on the river.
+
+### Audit: Rules systems NOT restored (for Faiq's go/no-go in the morning)
+
+The Rules define more than the rebuild has. Each of these was checked
+against the rebuild and deliberately left out of this round — not silently
+skipped, and not half-built. Restoring any of them is a discrete job; the
+content (destinations, specials, secrets, milestones) is already ported in
+`lib/destinations.ts`.
+
+- **Missions (21: 3 slots × 7 nights) + claims + River Light +
+  milestones.** HTML rule: per destination, a `visit` mission (5 River
+  Light, needs a `visit_place` event), a `special` mission (20, needs the
+  night's special evidence), a `kindness` mission (15, react to 3 distinct
+  wishes that night — `KINDNESS_GOAL = 3`); states locked / available /
+  in_progress / completed / claimed / missed; claims only while
+  `canClaim` (until 2026-12-08); each night's milestone target is 45
+  River Light (`DEFAULT_TARGET`) with stages at 25/50/75/100%.
+  Rebuild now: no missions, no claims, no River Light, no milestones.
+  What restoring takes: an event store (`loy:events`, one per day/kind/ref,
+  deduped — the HTML's `recordEvent`), the missions view + claim buttons,
+  a River Light total, and milestone stages per night. It needs the
+  specials below as evidence sources, so it is the last piece, not the first.
+- **Special evidence — the seven night specials.** HTML rule: each night's
+  special mission is earned by one act — day 1 float, day 2 Sukhothai quiz
+  (Nang Noppamas, first krathong; correct answer is option 0), day 3
+  blessing (send a blessing to someone else's wish; a blessing also counts
+  as `share` evidence), day 4 candle (one candle a day from night 4,
+  re-lighting recolours it; the flame shown on your own wishes is today's
+  candle flame), day 5 gratitude (one of 6 cards, once), day 6 share
+  (downloading the keepsake card or the journey card records a `share`
+  event), day 7 finale (join the celebration). Rebuild now: floating
+  exists; the flame is picked per krathong at float time, not lit as a
+  daily candle; no quiz, blessing, gratitude, share or finale action. What
+  restoring takes: one small UI + event each (quiz dialog, bless dialog
+  with the 6 template blessings, candle card from night 4, gratitude card
+  picker, share on keepsake download, finale join button) — each is small,
+  but all seven feed the missions above.
+- **Secrets (7 riddles).** HTML rule: each destination hides a secret
+  (e.g. Bangkok "The Golden Ripple", riddle "I am born when something
+  touches still water…", answer "A ripple" — every secret's correct answer
+  is option 0); finding one adds 5 River Light to that night's milestone
+  (`SECRET_RIVER_LIGHT`), once per secret. Rebuild now: no secrets, no
+  glimmer interaction, no riddle UI. What restoring takes: the riddle
+  content (already in `lib/destinations.ts`), a "tap what glimmers"
+  interaction on the river scene, and a claim into the night's milestone.
+- **Journey card + welcome dialog.** HTML rule: a journey card summarising
+  visited destinations, passport stamps, secrets found and nights on the
+  river (downloadable as a PNG; saving it records a `share` event), and a
+  once-a-day welcome dialog with tonight's destination story and a random
+  gentle line (`WELCOME_FALLBACK`). Rebuild now: neither exists. What
+  restoring takes: a summary view + the welcome dialog (content already in
+  `lib/destinations.ts` and the five welcome lines would need porting).
+- **Owner-delete refunds the float.** HTML rule (`deleteMyWish`): deleting
+  your own wish for today gives today's float slot back (the `float_slot`
+  event is removed). Rebuild now: there is no owner-delete at all — the
+  only delete is the admin route, which does not refund the server daily
+  slot or clear `loy:floated-day`. What restoring takes: an ownership token
+  issued at float time (stored in the browser) plus a refund path in the
+  delete route — a small API design change, not just UI.
+- **Wish destination.** HTML rule (`floatKrathong`): a floated wish is
+  tagged with the destination the visitor chose if that night is open,
+  else tonight's destination, else none — feeding the per-destination
+  "floated" map in the journey. Rebuild now: wishes carry no destination.
+  What restoring takes: a `destination` field on the wish + the assignment
+  rule in POST; visible only once the journey exists.
+- **Countdown target.** HTML rule: while the festival has not opened, the
+  banner counts down to the first day (18 November) — "Bangkok will open
+  in X days Y hours". Rebuild now: the hero counts down to the full moon
+  (24 November, 19:00 Bangkok) — "until the full moon rises". Left as is
+  deliberately: counting to the 18th under the words "until the full moon
+  rises" would be wrong copy, and the festival-opening countdown is a
+  different beat tied to the opening phase the rebuild does not have.
+  Faiq's call if he wants the 18th countdown added as well.
+- **Schedule modes / admin config.** HTML rule: `mode` (`opening_night` /
+  `finale_night`), `simDay` preview, per-day River Light targets, `paused`,
+  `celebrateUntil` — server config the admin set. Rebuild now: none of
+  these exist. What restoring takes: an admin config surface (the rebuild's
+  `/admin` page currently only does export/delete) — a separate admin job.
+- **Archive / closed phases in the UI.** HTML rule: after the last night
+  the site shows an archive banner ("Every destination stays open to
+  explore. Rewards you already earned can still be claimed for a little
+  while.") until 2026-12-08, then a closed banner. Rebuild now: no phase
+  banner at all (the passport gating above uses the same calendar, so the
+  destinations do stay open in the archive phase). What restoring takes: a
+  small banner driven by `calendar().phase`.
+
 ## Deliberate simplifications vs the original single-file site
+(superseded in part by the overnight round of 2026-11-06, above)
 
 - **Missions, secrets, quiz, gratitude lanterns, candle chain, blessing
-  lanterns, journey card, settings/admin panel, custom emoji, ambient
-  sound**: dropped. The brief's core is the shared river; those systems
-  were local-only game layers in the original and would have doubled the
-  scope without serving it. The seven destinations survive as the
-  passport strip (local stamps, no server state).
-- **Daily one-krathong guard**: softened to what the brief asked — the
-  builder warns via the server's 5/minute rate limit; there is no hard
-  per-day block, and the "float another" path is a plain button after
-  success.
-- **Seeds**: merged newest-first by their staggered November dates, so
-  real wishes (today's timestamp) sort above them. They are never written
-  to Redis.
+  lanterns, journey card, settings/admin panel, ambient sound**: dropped
+  in the first rebuild; the overnight round restored the festival calendar,
+  the destination/passport rules, the blessing generator, the crisis rail,
+  the reaction toggle and the custom emoji flower, and ported the
+  destinations/missions/secrets content — the rest is listed in the audit
+  above for Faiq's go/no-go.
+- **Daily one-krathong guard**: restored in the overnight round — one float
+  per Bangkok day per IP (server 429 `daily_limit` + client state), plus
+  ten daily stamps.
+- **Seeds**: removed at Faiq's request 2026-11-06 (the river starts blank);
+  they survive in git history at commit `22af37c5`.
 - **Counts**: the wall count and river count both come from the same
   `GET /api/wishes` response, so they agree by construction.

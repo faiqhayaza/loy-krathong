@@ -7,13 +7,15 @@ import {
   MAX_NAME_CHARS,
   MAX_WISH_CHARS,
   containsBlocked,
+  isAllowedCustomEmoji,
   isKnownBoat,
   isKnownFlame,
   isKnownFlower,
   type Lang,
   type Wish,
 } from '@/lib/data';
-import { addWish, checkRateLimit, listWishes, usingRedis } from '@/lib/store';
+import { addWish, checkDailyLimit, checkRateLimit, listWishes, usingRedis } from '@/lib/store';
+import { bangkokDay } from '@/lib/bangkok';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -62,7 +64,12 @@ export async function POST(req: NextRequest) {
 
   const wishRaw = typeof body.wish === 'string' ? body.wish.trim() : '';
   const nameRaw = typeof body.name === 'string' ? body.name.trim() : '';
-  const flower = typeof body.flower === 'string' && isKnownFlower(body.flower) ? body.flower : DEFAULT_FLOWER;
+  // A flower is a known one, or one allowed emoji of the visitor's own
+  // (Rules: isAllowedCustomEmoji); anything else falls back to lotus.
+  const flower =
+    typeof body.flower === 'string' && (isKnownFlower(body.flower) || isAllowedCustomEmoji(body.flower))
+      ? body.flower.trim()
+      : DEFAULT_FLOWER;
   const boat = typeof body.boat === 'string' && isKnownBoat(body.boat) ? body.boat : DEFAULT_BOAT;
   const flame = typeof body.flame === 'string' && isKnownFlame(body.flame) ? body.flame : DEFAULT_FLAME;
   const lang: Lang = body.lang === 'th' ? 'th' : 'en';
@@ -89,6 +96,16 @@ export async function POST(req: NextRequest) {
   if (!(await checkRateLimit(clientIp(req)))) {
     return NextResponse.json(
       { error: 'rate_limited', message: 'You have floated a few krathongs already. Give the river a moment.' },
+      { status: 429 },
+    );
+  }
+
+  // One float per Bangkok day per IP, like the original site. A distinct
+  // error body so the client can show the "come back tomorrow" state
+  // instead of the generic rate-limit message.
+  if (!(await checkDailyLimit(clientIp(req), bangkokDay()))) {
+    return NextResponse.json(
+      { error: 'daily_limit', message: 'You already floated a krathong today. Come back tomorrow for your next stamp.' },
       { status: 429 },
     );
   }
