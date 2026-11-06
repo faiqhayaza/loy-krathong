@@ -4,9 +4,11 @@
 // on the far bank with warm gold windows. The weather follows the real
 // Bangkok sky (Open-Meteo, refetched every 10 minutes; a gentle invented
 // cycle takes over if the fetch fails), so rain, cloud and wind are what
-// Bangkok is doing tonight. On Loy Krathong night itself (24 Nov 2026,
-// 19:00–23:59 Bangkok time) fireworks burst above the temple on their own
-// and the swifts fly toward the spire. Five quick clicks anywhere on the
+// Bangkok is doing tonight — under a heavy overcast the clouds close
+// into a deck and the moon and stars fade to a faint glow through it.
+// On Loy Krathong night itself (24 Nov 2026, 19:00–23:59 Bangkok time)
+// fireworks burst above the temple on their own and the swifts fly
+// toward the spire. Five quick clicks anywhere on the
 // canvas launch a short fireworks show — a hidden preview for the night.
 //
 // Below it all, dark reflective water and one floating krathong per wish,
@@ -94,6 +96,17 @@ function codeToWeather(code: number): { rain: number; fog: boolean; storm: boole
   if (code === 82) return { rain: 0.85, fog: false, storm: false };
   if (code === 95 || code === 96 || code === 99) return { rain: 0.7, fog: false, storm: true };
   return { rain: 0, fog: false, storm: false };
+}
+
+/**
+ * Heavy-overcast amount: 0 at ≤80% cloud cover, 1 at ≥100% — smoothstep,
+ * so the sky veils gradually rather than switching. At high cover the
+ * clouds grow into a deck, a grey-blue veil washes the sky, and the moon
+ * and stars fade to a faint glow through the cloud.
+ */
+function overcastAmount(cloud: number): number {
+  const t = Math.max(0, Math.min(1, (cloud - 80) / 20));
+  return t * t * (3 - 2 * t);
 }
 
 /**
@@ -225,6 +238,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     let boltStart = -1;
     let boltX = 0;
     let showUntil = 0;
+    let colorIdx = 0; // fireworks cycle gold → pink → violet → white, in order
     const clickTimes: number[] = [];
 
     function horizon(): number {
@@ -258,7 +272,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         });
       }
       clouds.length = 0;
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 9; i++) {
         clouds.push({
           x: Math.random() * w,
           y: h * (0.04 + Math.random() * 0.18),
@@ -450,32 +464,35 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
 
     // --- fireworks --------------------------------------------------------
     function launchRocket() {
-      if (rockets.length >= 5) return;
+      if (rockets.length >= 6) return;
       rockets.push({
         x: w * (0.12 + Math.random() * 0.7),
         y: horizon() + 2,
         vy: 4.5 + Math.random() * 1.5,
         targetY: h * (0.05 + Math.random() * 0.16),
-        color: FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)],
+        // Cycle the colours in order, so any few seconds of show always
+        // shows several colours instead of a random run of one.
+        color: FIREWORK_COLORS[colorIdx++ % FIREWORK_COLORS.length],
         wobble: Math.random() * 6,
       });
     }
 
     function burst(r: Rocket, now: number) {
-      const room = Math.max(0, 380 - particles.length);
-      const count = Math.min(48 + Math.floor(Math.random() * 24), room);
+      const room = Math.max(0, 500 - particles.length);
+      const count = Math.min(96 + Math.floor(Math.random() * 44), room);
       for (let i = 0; i < count; i++) {
         const ang = (i / count) * Math.PI * 2 + Math.random() * 0.3;
-        const sp = 0.8 + Math.random() * 2.2;
+        const sp = 0.9 + Math.random() * 2.6;
+        const life = 100 + Math.floor(Math.random() * 40);
         particles.push({
           x: r.x,
           y: r.y,
           vx: Math.cos(ang) * sp,
           vy: Math.sin(ang) * sp,
-          life: 50 + Math.floor(Math.random() * 40),
-          max: 90,
+          life,
+          max: life,
           color: r.color,
-          size: 1.2 + Math.random(),
+          size: 1.8 + Math.random() * 1.4,
         });
       }
       flashes.push({ x: r.x, y: r.y, color: r.color, bornAt: now });
@@ -586,7 +603,10 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     function draw(t: number) {
       const wthr = weatherRef.current;
       const skyH = horizon();
-      const dim = 1 - 0.6 * (wthr.cloudShown / 100); // clouds dim stars and moon
+      const overcast = overcastAmount(wthr.cloudShown);
+      // Clouds dim stars and moon; a heavy overcast veils them almost
+      // fully — the moon stays faintly visible, never bright.
+      const dim = (1 - 0.6 * (wthr.cloudShown / 100)) * (1 - 0.85 * overcast);
 
       // sky
       const sky = ctx!.createLinearGradient(0, 0, 0, skyH);
@@ -620,7 +640,8 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         ctx!.fill();
       }
 
-      // moon + halo, upper right — the reflection column below mirrors it
+      // moon + halo, upper right — the reflection column below mirrors it.
+      // Under a heavy overcast the disc itself is veiled, not shining.
       const mx = w * 0.78;
       const my = h * 0.13;
       const mr = Math.min(w, h) * 0.05;
@@ -631,6 +652,8 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       ctx!.beginPath();
       ctx!.arc(mx, my, mr * 3.2, 0, Math.PI * 2);
       ctx!.fill();
+      ctx!.save();
+      ctx!.globalAlpha = 1 - overcast * 0.6;
       const moon = ctx!.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, mr * 0.2, mx, my, mr);
       moon.addColorStop(0, '#fffbe8');
       moon.addColorStop(1, '#f2dfa0');
@@ -644,27 +667,39 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         ctx!.arc(mx + cx * mr, my + cy * mr, cr * mr, 0, Math.PI * 2);
         ctx!.fill();
       }
+      ctx!.restore();
 
-      // clouds — how many, and how dark, follow the real cloud cover
+      // heavy overcast: a translucent grey-blue veil over the sky band,
+      // drawn over stars and moon but under the clouds themselves
+      if (overcast > 0.01) {
+        ctx!.fillStyle = `rgba(118, 132, 172, ${(overcast * 0.22).toFixed(3)})`;
+        ctx!.fillRect(0, 0, w, skyH);
+      }
+
+      // clouds — how many, and how dark, follow the real cloud cover.
+      // Under a heavy overcast they grow larger and denser into a deck
+      // that covers most of the sky band.
       const activeClouds = Math.round((wthr.cloudShown / 100) * clouds.length);
       for (let i = 0; i < activeClouds; i++) {
         const c = clouds[i];
-        ctx!.fillStyle = 'rgba(26, 32, 66, 0.55)';
+        const cs = c.s * (1 + overcast * 1.1);
+        const ca = 0.55 + overcast * 0.25;
+        ctx!.fillStyle = `rgba(26, 32, 66, ${ca.toFixed(3)})`;
         ctx!.beginPath();
-        ctx!.ellipse(c.x, c.y, 46 * c.s, 13 * c.s, 0, 0, Math.PI * 2);
-        ctx!.ellipse(c.x - 30 * c.s, c.y + 4 * c.s, 30 * c.s, 10 * c.s, 0, 0, Math.PI * 2);
-        ctx!.ellipse(c.x + 32 * c.s, c.y + 5 * c.s, 32 * c.s, 11 * c.s, 0, 0, Math.PI * 2);
+        ctx!.ellipse(c.x, c.y, 46 * cs, 13 * cs, 0, 0, Math.PI * 2);
+        ctx!.ellipse(c.x - 30 * cs, c.y + 4 * cs, 30 * cs, 10 * cs, 0, 0, Math.PI * 2);
+        ctx!.ellipse(c.x + 32 * cs, c.y + 5 * cs, 32 * cs, 11 * cs, 0, 0, Math.PI * 2);
         ctx!.fill();
-        ctx!.fillStyle = 'rgba(150, 165, 220, 0.10)';
+        ctx!.fillStyle = `rgba(150, 165, 220, ${(0.1 + overcast * 0.06).toFixed(3)})`;
         ctx!.beginPath();
-        ctx!.ellipse(c.x, c.y - 4 * c.s, 40 * c.s, 8 * c.s, 0, 0, Math.PI * 2);
+        ctx!.ellipse(c.x, c.y - 4 * cs, 40 * cs, 8 * cs, 0, 0, Math.PI * 2);
         ctx!.fill();
       }
 
-      // falling stars
+      // falling stars — hidden behind a heavy overcast, like the real sky
       for (const m of meteors) {
         const grad = ctx!.createLinearGradient(m.x, m.y, m.x - m.vx * 12, m.y - m.vy * 12);
-        grad.addColorStop(0, `rgba(255,255,255,${(m.life / 60).toFixed(3)})`);
+        grad.addColorStop(0, `rgba(255,255,255,${((m.life / 60) * (1 - overcast)).toFixed(3)})`);
         grad.addColorStop(1, 'rgba(255,255,255,0)');
         ctx!.strokeStyle = grad;
         ctx!.lineWidth = 1.6;
@@ -695,29 +730,41 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
 
       drawTemple(t);
 
-      // fireworks above the temple
+      // fireworks above the temple — each rocket climbs with a glowing
+      // trail, so the sky is never empty between bursts
       for (const r of rockets) {
-        ctx!.strokeStyle = r.color;
-        ctx!.lineWidth = 1.4;
+        const trail = ctx!.createLinearGradient(r.x, r.y + 34, r.x, r.y);
+        trail.addColorStop(0, 'rgba(255, 248, 220, 0)');
+        trail.addColorStop(1, r.color);
+        ctx!.strokeStyle = trail;
+        ctx!.lineWidth = 2;
         ctx!.beginPath();
-        ctx!.moveTo(r.x, r.y + 14);
+        ctx!.moveTo(r.x, r.y + 34);
         ctx!.lineTo(r.x, r.y);
         ctx!.stroke();
+        const hg = ctx!.createRadialGradient(r.x, r.y, 0.5, r.x, r.y, 9);
+        hg.addColorStop(0, '#fffbe8');
+        hg.addColorStop(0.35, r.color);
+        hg.addColorStop(1, r.color + '00');
+        ctx!.fillStyle = hg;
+        ctx!.beginPath();
+        ctx!.arc(r.x, r.y, 9, 0, Math.PI * 2);
+        ctx!.fill();
         ctx!.fillStyle = '#fff8dc';
         ctx!.beginPath();
-        ctx!.arc(r.x, r.y, 2, 0, Math.PI * 2);
+        ctx!.arc(r.x, r.y, 2.6, 0, Math.PI * 2);
         ctx!.fill();
       }
       for (const f of flashes) {
         const age = t - f.bornAt;
-        if (age < 0 || age > 500) continue;
-        const fa = (1 - age / 500) * 0.22;
-        const fg = ctx!.createRadialGradient(f.x, f.y, 2, f.x, f.y, 60);
+        if (age < 0 || age > 900) continue;
+        const fa = (1 - age / 900) * 0.3;
+        const fg = ctx!.createRadialGradient(f.x, f.y, 2, f.x, f.y, 90);
         fg.addColorStop(0, f.color + Math.round(fa * 255).toString(16).padStart(2, '0'));
         fg.addColorStop(1, f.color + '00');
         ctx!.fillStyle = fg;
         ctx!.beginPath();
-        ctx!.arc(f.x, f.y, 60, 0, Math.PI * 2);
+        ctx!.arc(f.x, f.y, 90, 0, Math.PI * 2);
         ctx!.fill();
       }
       for (const p of particles) {
@@ -752,11 +799,12 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         ctx!.stroke();
       }
 
-      // moon reflection column
+      // moon reflection column — fainter under a heavy overcast, like the
+      // veiled moon itself
       for (let i = 0; i < 26; i++) {
         const yy = skyH + (i / 26) * (h - skyH) * 0.92;
         const spread = 14 + (yy / h) * 46;
-        const a = 0.05 + 0.1 * Math.abs(Math.sin(t / 900 + i * 1.7));
+        const a = (0.05 + 0.1 * Math.abs(Math.sin(t / 900 + i * 1.7))) * (1 - overcast * 0.5);
         ctx!.strokeStyle = `rgba(246, 211, 107, ${a.toFixed(3)})`;
         ctx!.lineWidth = 1.4;
         ctx!.beginPath();
@@ -768,8 +816,8 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // firework glints on the water, like the original's reflection bar
       for (const f of flashes) {
         const age = t - f.bornAt;
-        if (age < 0 || age > 500) continue;
-        const fa = (1 - age / 500) * 0.14;
+        if (age < 0 || age > 900) continue;
+        const fa = (1 - age / 900) * 0.18;
         ctx!.fillStyle = f.color;
         ctx!.globalAlpha = fa;
         ctx!.fillRect(f.x - 12, skyH + (skyH - f.y) * 0.22, 24, 2);
@@ -958,8 +1006,11 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       if (showUntil > now) {
         nextShowRocket -= 16;
         if (nextShowRocket <= 0) {
-          nextShowRocket = 700 + Math.random() * 400;
+          // a rocket every ~0.5–0.8 s, and sometimes two at once, so the
+          // sky is rarely empty during the show
+          nextShowRocket = 500 + Math.random() * 300;
           launchRocket();
+          if (Math.random() < 0.3) launchRocket();
         }
       }
       for (let i = rockets.length - 1; i >= 0; i--) {
@@ -982,7 +1033,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         p.life -= 1;
         if (p.life <= 0) particles.splice(i, 1);
       }
-      flashes = flashes.filter((f) => t - f.bornAt < 500);
+      flashes = flashes.filter((f) => t - f.bornAt < 900);
 
       draw(t);
       raf = requestAnimationFrame(frame);

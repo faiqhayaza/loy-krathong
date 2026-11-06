@@ -108,6 +108,43 @@ for that local run (it is not in any file; `.env.example` ships empty).
   canvas animation still needs eyes on it after deploy.
 - Not pushed, not deployed; working tree left ready for review.
 
+## 2026-11-06 evening — fix round: fuller fireworks, true overcast
+
+Two findings from the live visual check of the round-2 scene
+(`components/RiverCanvas.tsx` only; festival window, 5-click trigger,
+25 s show length, and no UI hints all unchanged):
+- **Fireworks read small, sparse and short-lived** (a pink burst right
+  after the 5 clicks and at +5 s, nothing at +10 s or +20 s, and only
+  pink ever seen). Fixes: rockets are now drawn visibly — a bright
+  glowing head with a fading trail while rising (before: a 1.4 px line
+  and a 2 px dot, nearly invisible). Bursts are roughly doubled
+  (96–140 particles vs 48–72, size 1.8–3.2 vs 1.2–2.2) and live
+  ~100–140 frames (~2 s) instead of 50–90, with the glow flash
+  lingering ~900 ms at radius 90 (was 500 ms / 60). Preview cadence
+  tightened to a rocket every ~500–800 ms (was 700–1100 ms) with a 30%
+  chance of two at once, so the sky is rarely empty. Colours now cycle
+  gold → pink → violet → white in order instead of random, so any few
+  seconds of show always shows several colours — same cycling for the
+  automatic Loy Krathong night show. Particle cap raised 380 → 500;
+  rocket cap 5 → 6.
+- **Overcast underplayed**: Bangkok was code 3, cloud_cover 99%, but
+  the scene looked only partly cloudy with a bright moon. Fixes: a new
+  `overcastAmount()` smoothsteps cloud cover 80% → 0 to 100% → 1.
+  With it, clouds grow up to ~2.1× larger and denser (9 seeded clouds
+  instead of 6) into a deck covering most of the sky band, a
+  translucent grey-blue veil (`rgba(118,132,172)`, up to 0.22 alpha)
+  washes the sky band over stars and moon, star dimming gains a
+  further ×(1 − 0.85·overcast) factor, the moon disc fades to 40%
+  opacity (halo fades with the same dimming), falling stars fade out
+  with the overcast, and the moon reflection column dims by up to half.
+  Temple windows and krathong flames are not dimmed. Rain/fog/storm
+  mapping unchanged.
+- Verification this round: `npm run build` passes clean (see below).
+  No live-browser visual check was possible from here — the canvas
+  still needs eyes on it after deploy, especially the show at +10 s /
+  +20 s and the overcast sky at tonight's 99% cloud cover.
+- Not pushed, not deployed; working tree left ready for review.
+
 ## 2026-11-06 evening — shared-store readiness
 
 - Vercel's Upstash integration no longer offers a free plan (cheapest is
