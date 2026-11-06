@@ -57,6 +57,57 @@ for that local run (it is not in any file; `.env.example` ships empty).
   `GET /api/wishes` returns `count: 0`, `storage: "redis"` — no test
   data and no seeds remain; the river only shows wishes visitors float.
 
+## 2026-11-06 evening — river scene round 2 (sky, temple, live weather, fireworks)
+
+- Faiq called the river bland. `components/RiverCanvas.tsx` was rewritten
+  (only that file changed): the top ~28% of the canvas is now night sky
+  (gradient, twinkling stars, glowing full moon upper-right with the
+  reflection column below it, slow clouds), a Wat Arun-inspired temple
+  silhouette sits on the far bank (tiered central prang, two chedis,
+  two-tier roofs with upturned eaves, twinkling gold windows), swifts
+  cross in loose flocks with a two-frame wing flap, and falling stars
+  streak a few times a minute. Krathong drawing, name tags, hover
+  tooltip, click-to-pin, splash + rising lantern, rows, reduced-motion
+  static frame, resize handling and DPR cap 2 are all unchanged.
+- **Live Bangkok weather**: client-side fetch of Open-Meteo
+  (`latitude=13.7563, longitude=100.5018`, `current=temperature_2m,
+  weather_code,cloud_cover,wind_speed_10m,wind_direction_10m`), refetch
+  every 10 min, 8 s timeout, first paint never waits for it (gentle
+  clear default). Mapping: code 0 clear; 1–3 cloud cover from
+  `cloud_cover` (sets cloud count 0–6 and star/moon dimming); 45/48 fog
+  (mist band over the water); 51/53/55 drizzle, 61/63/65 rain, 80/81/82
+  showers (streaks + ripple rings, intensity by code, capped visually);
+  95 thunderstorm (heavier rain + a soft distant lightning glow, max
+  alpha 0.10, no harsh flash); snow/freezing codes treated as rain.
+  `wind_speed_10m` sets wind strength (cloud/krathong/lantern drift,
+  flame flicker); `wind_direction_10m` sets drift direction (wind comes
+  FROM that bearing). Nothing in the UI mentions the weather source.
+- **Fallback**: if the fetch fails, times out, or returns unusable data,
+  a gentle invented 4-minute cycle takes over — clear 70 s → cloudy
+  70 s → light shower 55 s → clearing 45 s — with displayed values
+  eased toward targets so changes are gradual.
+- **Fireworks**: particle bursts (rockets + gravity, original palette
+  gold `#ffd27a`, pink `#ff7eb6`, violet `#b8a8ff`, white) above the
+  temple, capped at 380 particles. Automatic only on Loy Krathong night:
+  24 Nov 2026 19:00–23:59 Asia/Bangkok
+  (`Date.UTC(2026,10,24,12,0,0)` to `Date.UTC(2026,10,24,16,59,59)`),
+  one rocket every ~1.2–2.6 s. During that window the swifts fly toward
+  the temple spire and fade as they reach it; outside it they cross in
+  varied directions. **Hidden preview, no button**: 5 clicks on the
+  canvas within ~4 s (mouse or tap, including on a krathong — normal
+  select still works) launches a ~25 s show.
+- Verification this round: `npm run build` passes clean (TypeScript
+  strict + lint, 4 static pages, `/` 18.4 kB / 106 kB first load).
+  Open-Meteo was curled live and returned Bangkok code 3, cloud 99%,
+  wind 4.4 km/h from 55° — the mapping was checked against that real
+  payload. Festival-window logic was checked in node (false now, true
+  19:30 and 23:59 on 24 Nov, false 18:59 on 24 Nov and 00:30 on 25 Nov).
+  A local dev server served the homepage 200 with the river canvas and
+  `GET /api/wishes` returning `count: 0` (blank river intact), then was
+  stopped. No live-browser visual check was done in this round — the
+  canvas animation still needs eyes on it after deploy.
+- Not pushed, not deployed; working tree left ready for review.
+
 ## 2026-11-06 evening — shared-store readiness
 
 - Vercel's Upstash integration no longer offers a free plan (cheapest is

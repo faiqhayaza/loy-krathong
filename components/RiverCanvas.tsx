@@ -1,7 +1,17 @@
-// The river: dark reflective water with a moonlit shimmer, gentle ripples,
-// and one floating krathong per wish. Each krathong is drawn — leaf boat in
-// its colour, flower, flickering candle — with the person's name on a small
-// tag above it. Hover (or tap) reads the wish; a click pins it open.
+// The river: a living Bangkok night. Above the water — a deep sky with
+// twinkling stars and a full moon, slow clouds, swifts crossing in loose
+// flocks, the odd falling star, and a Wat Arun-inspired temple silhouette
+// on the far bank with warm gold windows. The weather follows the real
+// Bangkok sky (Open-Meteo, refetched every 10 minutes; a gentle invented
+// cycle takes over if the fetch fails), so rain, cloud and wind are what
+// Bangkok is doing tonight. On Loy Krathong night itself (24 Nov 2026,
+// 19:00–23:59 Bangkok time) fireworks burst above the temple on their own
+// and the swifts fly toward the spire. Five quick clicks anywhere on the
+// canvas launch a short fireworks show — a hidden preview for the night.
+//
+// Below it all, dark reflective water and one floating krathong per wish,
+// name on a small tag above it. Hover (or tap) reads the wish; a click
+// pins it open.
 
 'use client';
 
@@ -20,6 +30,25 @@ interface Sprite {
   fresh: boolean;
 }
 
+interface Star { x: number; y: number; r: number; phase: number; speed: number }
+interface Cloud { x: number; y: number; s: number }
+interface SwiftBird { dx: number; dy: number; phase: number }
+interface SwiftFlock {
+  birds: SwiftBird[];
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  alpha: number;
+  toTemple: boolean;
+}
+interface Meteor { x: number; y: number; vx: number; vy: number; life: number }
+interface RainDrop { x: number; y: number; len: number; speed: number }
+interface RippleRing { x: number; y: number; r: number; max: number; a: number }
+interface Rocket { x: number; y: number; vy: number; targetY: number; color: string; wobble: number }
+interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number }
+interface Flash { x: number; y: number; color: string; bornAt: number }
+
 interface Props {
   wishes: Wish[];
   lang: Lang;
@@ -29,6 +58,71 @@ interface Props {
 }
 
 const ROWS = 4;
+const SKY_FRAC = 0.28; // sky band height, as a fraction of canvas height
+
+// Loy Krathong night: 24 Nov 2026, 19:00–23:59 Asia/Bangkok (UTC+7, no DST).
+const FESTIVAL_START = Date.UTC(2026, 10, 24, 12, 0, 0);
+const FESTIVAL_END = Date.UTC(2026, 10, 24, 16, 59, 59);
+
+function isFestivalNight(now = Date.now()): boolean {
+  return now >= FESTIVAL_START && now <= FESTIVAL_END;
+}
+
+// The original site's palette, kept.
+const FIREWORK_COLORS = ['#ffd27a', '#ff7eb6', '#b8a8ff', '#ffffff'];
+
+const WEATHER_URL =
+  'https://api.open-meteo.com/v1/forecast?latitude=13.7563&longitude=100.5018' +
+  '&current=temperature_2m,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m';
+
+/** Map a WMO weather code to rain intensity (0–1), fog, and storm. */
+function codeToWeather(code: number): { rain: number; fog: boolean; storm: boolean } {
+  if (code === 0) return { rain: 0, fog: false, storm: false };
+  if (code === 45 || code === 48) return { rain: 0, fog: true, storm: false };
+  if (code === 51) return { rain: 0.25, fog: false, storm: false };
+  if (code === 53) return { rain: 0.4, fog: false, storm: false };
+  if (code === 55) return { rain: 0.55, fog: false, storm: false };
+  if (code === 56 || code === 57 || code === 66 || code === 67) return { rain: 0.5, fog: false, storm: false };
+  if (code === 61) return { rain: 0.4, fog: false, storm: false };
+  if (code === 63) return { rain: 0.6, fog: false, storm: false };
+  if (code === 65) return { rain: 0.8, fog: false, storm: false };
+  if (code === 71 || code === 73 || code === 75 || code === 77 || code === 85 || code === 86) {
+    return { rain: 0.5, fog: false, storm: false }; // snow never falls in Bangkok; treat as rain
+  }
+  if (code === 80) return { rain: 0.5, fog: false, storm: false };
+  if (code === 81) return { rain: 0.65, fog: false, storm: false };
+  if (code === 82) return { rain: 0.85, fog: false, storm: false };
+  if (code === 95 || code === 96 || code === 99) return { rain: 0.7, fog: false, storm: true };
+  return { rain: 0, fog: false, storm: false };
+}
+
+/**
+ * Fallback weather when the live fetch fails: a gentle 4-minute cycle —
+ * clear (70s) → cloudy (70s) → light shower (55s) → clearing (45s).
+ * Displayed values ease toward the targets, so the change is gradual.
+ */
+const FALLBACK_CYCLE_MS = 240000;
+function fallbackTargets(elapsed: number): { rain: number; cloud: number; wind: number } {
+  const phase = (elapsed % FALLBACK_CYCLE_MS) / FALLBACK_CYCLE_MS;
+  if (phase < 0.29) return { rain: 0, cloud: 10, wind: 0.25 };
+  if (phase < 0.58) return { rain: 0, cloud: 65, wind: 0.45 };
+  if (phase < 0.81) return { rain: 0.35, cloud: 85, wind: 0.6 };
+  return { rain: 0.06, cloud: 30, wind: 0.35 };
+}
+
+interface WeatherState {
+  mode: 'live' | 'fallback';
+  rain: number; // target rain intensity 0–1
+  cloud: number; // target cloud cover 0–100
+  wind: number; // target wind strength ~0.15 (calm) to ~1.4 (strong)
+  dirX: number; // horizontal drift direction, -1 (westward) to 1 (eastward)
+  fog: boolean;
+  storm: boolean;
+  rainShown: number; // displayed values, eased toward the targets
+  cloudShown: number;
+  windShown: number;
+  fogShown: number;
+}
 
 export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSelect }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -42,6 +136,63 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
   langRef.current = lang;
   const highlightRef = useRef<string | null>(highlightId);
   highlightRef.current = highlightId;
+  const weatherRef = useRef<WeatherState>({
+    mode: 'fallback',
+    rain: 0, cloud: 15, wind: 0.3, dirX: -0.6, fog: false, storm: false,
+    rainShown: 0, cloudShown: 15, windShown: 0.3, fogShown: 0,
+  });
+
+  // Live Bangkok weather, client-side. Never blocks the first paint: the
+  // scene renders immediately on the gentle default above and adjusts
+  // when the data arrives. Nothing in the UI mentions the source.
+  useEffect(() => {
+    async function load() {
+      const ctrl = new AbortController();
+      const timeout = window.setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const res = await fetch(WEATHER_URL, { signal: ctrl.signal });
+        if (!res.ok) throw new Error(`weather ${res.status}`);
+        const data = (await res.json()) as {
+          current?: {
+            weather_code?: unknown;
+            cloud_cover?: unknown;
+            wind_speed_10m?: unknown;
+            wind_direction_10m?: unknown;
+          };
+        };
+        const c = data.current;
+        if (
+          !c ||
+          typeof c.weather_code !== 'number' ||
+          typeof c.cloud_cover !== 'number' ||
+          typeof c.wind_speed_10m !== 'number' ||
+          typeof c.wind_direction_10m !== 'number'
+        ) {
+          throw new Error('weather payload unusable');
+        }
+        const mapped = codeToWeather(c.weather_code);
+        const wthr = weatherRef.current;
+        wthr.rain = mapped.rain;
+        wthr.cloud = Math.max(0, Math.min(100, c.cloud_cover));
+        wthr.wind = 0.15 + Math.max(0, Math.min(80, c.wind_speed_10m)) / 40;
+        // Wind direction is where the wind comes FROM (degrees, 0 = north);
+        // the scene drifts toward the opposite bearing.
+        const toward = ((c.wind_direction_10m + 180) % 360) * (Math.PI / 180);
+        wthr.dirX = Math.sin(toward);
+        wthr.fog = mapped.fog;
+        wthr.storm = mapped.storm;
+        wthr.mode = 'live';
+      } catch {
+        // Stay on (or return to) the invented cycle; the scene never stalls.
+        weatherRef.current.mode = 'fallback';
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+    load();
+    const id = window.setInterval(load, 10 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -50,11 +201,41 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     if (!ctx) return;
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const startTime = performance.now();
     let raf = 0;
     let w = 0;
     let h = 0;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const sprites = spritesRef.current;
+
+    const stars: Star[] = [];
+    const clouds: Cloud[] = [];
+    const drops: RainDrop[] = [];
+    let flocks: SwiftFlock[] = [];
+    let meteors: Meteor[] = [];
+    let rings: RippleRing[] = [];
+    let rockets: Rocket[] = [];
+    let particles: Particle[] = [];
+    let flashes: Flash[] = [];
+    let nextMeteor = 5000;
+    let nextFlock = 6000;
+    let nextRocket = 2000;
+    let nextShowRocket = 0;
+    let nextBolt = 9000;
+    let boltStart = -1;
+    let boltX = 0;
+    let showUntil = 0;
+    const clickTimes: number[] = [];
+
+    function horizon(): number {
+      return h * SKY_FRAC;
+    }
+    function templeX(): number {
+      return w * 0.3;
+    }
+    function templeTopY(): number {
+      return horizon() - h * 0.17;
+    }
 
     function rowY(row: number): number {
       // Row 0 is the far bank (small, high), row 3 the near bank (large, low).
@@ -62,6 +243,37 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     }
     function rowScale(row: number): number {
       return 0.62 + row * 0.22;
+    }
+
+    function seedSky() {
+      stars.length = 0;
+      const n = Math.min(110, Math.floor((w * h) / 14000));
+      for (let i = 0; i < n; i++) {
+        stars.push({
+          x: Math.random() * w,
+          y: h * (0.015 + Math.random() * 0.24),
+          r: Math.random() * 1.3 + 0.4,
+          phase: Math.random() * Math.PI * 2,
+          speed: 0.4 + Math.random() * 1.2,
+        });
+      }
+      clouds.length = 0;
+      for (let i = 0; i < 6; i++) {
+        clouds.push({
+          x: Math.random() * w,
+          y: h * (0.04 + Math.random() * 0.18),
+          s: 0.6 + Math.random() * 0.9,
+        });
+      }
+      drops.length = 0;
+      for (let i = 0; i < 120; i++) {
+        drops.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          len: 8 + Math.random() * 7,
+          speed: 5 + Math.random() * 4,
+        });
+      }
     }
 
     function syncSprites() {
@@ -97,16 +309,186 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       canvas!.width = Math.max(1, Math.round(w * dpr));
       canvas!.height = Math.max(1, Math.round(h * dpr));
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+      seedSky();
       syncSprites();
       draw(performance.now());
     }
 
+    // --- temple -----------------------------------------------------------
+    // Central prang with tiered base and a tapering spire, drawn as one
+    // stepped profile. bw is the base half-width, th the total height.
+    function prang(x: number, baseY: number, bw: number, th: number) {
+      ctx!.beginPath();
+      ctx!.moveTo(x - bw, baseY);
+      ctx!.lineTo(x - bw, baseY - th * 0.18);
+      ctx!.lineTo(x - bw * 0.78, baseY - th * 0.18);
+      ctx!.lineTo(x - bw * 0.78, baseY - th * 0.36);
+      ctx!.lineTo(x - bw * 0.58, baseY - th * 0.36);
+      ctx!.lineTo(x - bw * 0.58, baseY - th * 0.52);
+      ctx!.lineTo(x - bw * 0.4, baseY - th * 0.52);
+      ctx!.lineTo(x - bw * 0.4, baseY - th * 0.62);
+      ctx!.quadraticCurveTo(x - bw * 0.22, baseY - th * 0.78, x, baseY - th);
+      ctx!.quadraticCurveTo(x + bw * 0.22, baseY - th * 0.78, x + bw * 0.4, baseY - th * 0.62);
+      ctx!.lineTo(x + bw * 0.4, baseY - th * 0.52);
+      ctx!.lineTo(x + bw * 0.58, baseY - th * 0.52);
+      ctx!.lineTo(x + bw * 0.58, baseY - th * 0.36);
+      ctx!.lineTo(x + bw * 0.78, baseY - th * 0.36);
+      ctx!.lineTo(x + bw * 0.78, baseY - th * 0.18);
+      ctx!.lineTo(x + bw, baseY - th * 0.18);
+      ctx!.lineTo(x + bw, baseY);
+      ctx!.closePath();
+      ctx!.fill();
+      ctx!.beginPath();
+      ctx!.arc(x, baseY - th - 2, 2, 0, Math.PI * 2);
+      ctx!.fill();
+    }
+
+    // A temple roof in two tiers, eave ends flicking upward.
+    function tieredRoof(x: number, baseY: number, rw: number, rh: number) {
+      ctx!.beginPath();
+      ctx!.moveTo(x - rw, baseY);
+      ctx!.quadraticCurveTo(x - rw * 0.92, baseY - rh * 0.28, x - rw * 0.62, baseY - rh * 0.3);
+      ctx!.lineTo(x + rw * 0.62, baseY - rh * 0.3);
+      ctx!.quadraticCurveTo(x + rw * 0.92, baseY - rh * 0.28, x + rw, baseY);
+      ctx!.closePath();
+      ctx!.fill();
+      ctx!.beginPath();
+      ctx!.moveTo(x - rw * 0.62, baseY - rh * 0.3);
+      ctx!.quadraticCurveTo(x - rw * 0.56, baseY - rh * 0.55, x - rw * 0.34, baseY - rh * 0.58);
+      ctx!.lineTo(x + rw * 0.34, baseY - rh * 0.58);
+      ctx!.quadraticCurveTo(x + rw * 0.56, baseY - rh * 0.55, x + rw * 0.62, baseY - rh * 0.3);
+      ctx!.closePath();
+      ctx!.fill();
+      ctx!.beginPath();
+      ctx!.moveTo(x - rw * 0.1, baseY - rh * 0.58);
+      ctx!.lineTo(x, baseY - rh * 0.95);
+      ctx!.lineTo(x + rw * 0.1, baseY - rh * 0.58);
+      ctx!.closePath();
+      ctx!.fill();
+    }
+
+    function drawTemple(t: number) {
+      const base = horizon();
+      // faint warm glow behind the central prang
+      const glow = ctx!.createRadialGradient(templeX(), base - h * 0.05, 4, templeX(), base - h * 0.05, w * 0.24);
+      glow.addColorStop(0, 'rgba(246, 211, 107, 0.10)');
+      glow.addColorStop(1, 'rgba(246, 211, 107, 0)');
+      ctx!.fillStyle = glow;
+      ctx!.fillRect(templeX() - w * 0.24, base - h * 0.24, w * 0.48, h * 0.26);
+
+      ctx!.fillStyle = '#04061a';
+      // low riverside blocks between the spires
+      ctx!.fillRect(w * 0.185, base - h * 0.018, w * 0.05, h * 0.018);
+      ctx!.fillRect(w * 0.365, base - h * 0.018, w * 0.05, h * 0.018);
+      tieredRoof(w * 0.07, base, w * 0.05, h * 0.05);
+      tieredRoof(w * 0.56, base, w * 0.045, h * 0.045);
+      prang(w * 0.14, base, w * 0.022, h * 0.1);
+      prang(w * 0.46, base, w * 0.022, h * 0.1);
+      prang(templeX(), base, w * 0.045, h * 0.17);
+      // crisp bank line where sky meets water
+      ctx!.fillRect(0, base - 1, w, 2);
+
+      // warm windows, gently twinkling
+      const windows: [number, number][] = [
+        [0.3, 0.03], [0.3, 0.065], [0.3, 0.1],
+        [0.14, 0.025], [0.46, 0.025],
+        [0.07, 0.012], [0.56, 0.012],
+        [0.2, 0.008], [0.38, 0.008],
+      ];
+      windows.forEach(([fx, fy], i) => {
+        const a = 0.45 + 0.3 * Math.sin(t / 700 + i * 1.9);
+        ctx!.fillStyle = `rgba(246, 211, 107, ${a.toFixed(3)})`;
+        ctx!.fillRect(w * fx - 1.2, base - h * fy - 1.8, 2.5, 3.5);
+      });
+    }
+
+    // --- swifts -----------------------------------------------------------
+    function spawnFlock(festival: boolean) {
+      const n = 3 + Math.floor(Math.random() * 4);
+      const birds: SwiftBird[] = [];
+      for (let i = 0; i < n; i++) {
+        birds.push({
+          dx: (i - n / 2) * 16 + (Math.random() - 0.5) * 8,
+          dy: (Math.random() - 0.5) * 14,
+          phase: Math.random() * Math.PI * 2,
+        });
+      }
+      if (festival) {
+        // On the night itself the flocks head for the temple spire.
+        const fromLeft = Math.random() < 0.5;
+        const x = fromLeft ? -30 : w + 30;
+        const y = h * (0.06 + Math.random() * 0.12);
+        const dx = templeX() - x;
+        const dy = templeTopY() - y;
+        const len = Math.hypot(dx, dy) || 1;
+        const sp = 0.7 + Math.random() * 0.3;
+        flocks.push({ birds, x, y, vx: (dx / len) * sp, vy: (dy / len) * sp, alpha: 0, toTemple: true });
+      } else {
+        const dir = Math.random() < 0.5 ? 1 : -1;
+        flocks.push({
+          birds,
+          x: dir > 0 ? -30 : w + 30,
+          y: h * (0.05 + Math.random() * 0.17),
+          vx: dir * (0.5 + Math.random() * 0.5),
+          vy: (Math.random() - 0.5) * 0.15,
+          alpha: 0,
+          toTemple: false,
+        });
+      }
+    }
+
+    function drawSwift(bx: number, by: number, t: number, phase: number, alpha: number) {
+      const flap = Math.sin(t / 110 + phase) * 4;
+      ctx!.strokeStyle = `rgba(5, 8, 26, ${alpha.toFixed(3)})`;
+      ctx!.lineWidth = 1.6;
+      ctx!.beginPath();
+      ctx!.moveTo(bx - 7, by);
+      ctx!.quadraticCurveTo(bx - 3.5, by - 3 - flap, bx, by);
+      ctx!.quadraticCurveTo(bx + 3.5, by - 3 - flap, bx + 7, by);
+      ctx!.stroke();
+    }
+
+    // --- fireworks --------------------------------------------------------
+    function launchRocket() {
+      if (rockets.length >= 5) return;
+      rockets.push({
+        x: w * (0.12 + Math.random() * 0.7),
+        y: horizon() + 2,
+        vy: 4.5 + Math.random() * 1.5,
+        targetY: h * (0.05 + Math.random() * 0.16),
+        color: FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)],
+        wobble: Math.random() * 6,
+      });
+    }
+
+    function burst(r: Rocket, now: number) {
+      const room = Math.max(0, 380 - particles.length);
+      const count = Math.min(48 + Math.floor(Math.random() * 24), room);
+      for (let i = 0; i < count; i++) {
+        const ang = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+        const sp = 0.8 + Math.random() * 2.2;
+        particles.push({
+          x: r.x,
+          y: r.y,
+          vx: Math.cos(ang) * sp,
+          vy: Math.sin(ang) * sp,
+          life: 50 + Math.floor(Math.random() * 40),
+          max: 90,
+          color: r.color,
+          size: 1.2 + Math.random(),
+        });
+      }
+      flashes.push({ x: r.x, y: r.y, color: r.color, bornAt: now });
+    }
+
+    // --- krathongs (unchanged behaviour) ----------------------------------
     function drawKrathong(wish: Wish, s: Sprite, t: number) {
       const y = rowY(s.row) + Math.sin(t / 1100 + s.phase) * 3;
       const sc = s.scale;
       const [c1, c2] = boatColors(wish.boat);
       const fc = flameColor(wish.flame);
       const age = t - s.bornAt;
+      const wind = weatherRef.current.windShown;
 
       // splash rings for a fresh krathong
       if (s.fresh && age < 2600) {
@@ -121,8 +503,8 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         }
       }
 
-      // flame glow
-      const flick = 1 + 0.14 * Math.sin(t / 170 + s.phase * 3);
+      // flame glow — a stronger wind makes the flame dance harder
+      const flick = 1 + (0.14 + wind * 0.1) * Math.sin(t / 170 + s.phase * 3);
       const glow = ctx!.createRadialGradient(s.x, y - 26 * sc, 1, s.x, y - 26 * sc, 26 * sc);
       glow.addColorStop(0, fc + 'cc');
       glow.addColorStop(1, fc + '00');
@@ -164,10 +546,10 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       ctx!.ellipse(s.x, y + 3 * sc, 26 * sc, 5 * sc, 0, Math.PI, Math.PI * 2);
       ctx!.fill();
 
-      // rising lantern for a fresh krathong
+      // rising lantern for a fresh krathong — the wind carries it sideways
       if (s.fresh && age < 4000) {
         const lp = age / 4000;
-        const lx = s.x + Math.sin(age / 500) * 6;
+        const lx = s.x + Math.sin(age / 500) * 6 + weatherRef.current.dirX * wind * lp * 24;
         const ly = y - 40 * sc - lp * 130;
         ctx!.fillStyle = `rgba(255, 190, 90, ${(1 - lp) * 0.9})`;
         ctx!.beginPath();
@@ -202,18 +584,177 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     }
 
     function draw(t: number) {
+      const wthr = weatherRef.current;
+      const skyH = horizon();
+      const dim = 1 - 0.6 * (wthr.cloudShown / 100); // clouds dim stars and moon
+
+      // sky
+      const sky = ctx!.createLinearGradient(0, 0, 0, skyH);
+      sky.addColorStop(0, '#06081c');
+      sky.addColorStop(0.55, '#0d1132');
+      sky.addColorStop(1, '#1e1b45');
+      ctx!.fillStyle = sky;
+      ctx!.fillRect(0, 0, w, skyH);
+
+      // distant lightning — a soft glow, never a harsh flash
+      if (!reduced && wthr.storm && boltStart >= 0) {
+        const bp = (t - boltStart) / 450;
+        if (bp < 1) {
+          const env = bp < 0.15 ? bp / 0.15 : 1 - (bp - 0.15) / 0.85;
+          const flicker = 0.7 + 0.3 * Math.sin(bp * 25);
+          const la = 0.1 * env * flicker;
+          const lg = ctx!.createRadialGradient(boltX, skyH * 0.4, 4, boltX, skyH * 0.4, w * 0.35);
+          lg.addColorStop(0, `rgba(205, 215, 255, ${la.toFixed(3)})`);
+          lg.addColorStop(1, 'rgba(205, 215, 255, 0)');
+          ctx!.fillStyle = lg;
+          ctx!.fillRect(0, 0, w, skyH);
+        }
+      }
+
+      // stars
+      for (const s of stars) {
+        const a = (0.35 + 0.65 * Math.abs(Math.sin((t / 1000) * s.speed + s.phase))) * dim;
+        ctx!.fillStyle = `rgba(255, 244, 214, ${a.toFixed(3)})`;
+        ctx!.beginPath();
+        ctx!.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+
+      // moon + halo, upper right — the reflection column below mirrors it
+      const mx = w * 0.78;
+      const my = h * 0.13;
+      const mr = Math.min(w, h) * 0.05;
+      const halo = ctx!.createRadialGradient(mx, my, mr * 0.4, mx, my, mr * 3.2);
+      halo.addColorStop(0, `rgba(255, 240, 200, ${(0.35 * dim).toFixed(3)})`);
+      halo.addColorStop(1, 'rgba(255, 240, 200, 0)');
+      ctx!.fillStyle = halo;
+      ctx!.beginPath();
+      ctx!.arc(mx, my, mr * 3.2, 0, Math.PI * 2);
+      ctx!.fill();
+      const moon = ctx!.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, mr * 0.2, mx, my, mr);
+      moon.addColorStop(0, '#fffbe8');
+      moon.addColorStop(1, '#f2dfa0');
+      ctx!.fillStyle = moon;
+      ctx!.beginPath();
+      ctx!.arc(mx, my, mr, 0, Math.PI * 2);
+      ctx!.fill();
+      ctx!.fillStyle = 'rgba(190, 170, 120, 0.35)';
+      for (const [cx, cy, cr] of [[-0.3, 0.1, 0.16], [0.25, -0.25, 0.12], [0.1, 0.35, 0.09]] as const) {
+        ctx!.beginPath();
+        ctx!.arc(mx + cx * mr, my + cy * mr, cr * mr, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+
+      // clouds — how many, and how dark, follow the real cloud cover
+      const activeClouds = Math.round((wthr.cloudShown / 100) * clouds.length);
+      for (let i = 0; i < activeClouds; i++) {
+        const c = clouds[i];
+        ctx!.fillStyle = 'rgba(26, 32, 66, 0.55)';
+        ctx!.beginPath();
+        ctx!.ellipse(c.x, c.y, 46 * c.s, 13 * c.s, 0, 0, Math.PI * 2);
+        ctx!.ellipse(c.x - 30 * c.s, c.y + 4 * c.s, 30 * c.s, 10 * c.s, 0, 0, Math.PI * 2);
+        ctx!.ellipse(c.x + 32 * c.s, c.y + 5 * c.s, 32 * c.s, 11 * c.s, 0, 0, Math.PI * 2);
+        ctx!.fill();
+        ctx!.fillStyle = 'rgba(150, 165, 220, 0.10)';
+        ctx!.beginPath();
+        ctx!.ellipse(c.x, c.y - 4 * c.s, 40 * c.s, 8 * c.s, 0, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+
+      // falling stars
+      for (const m of meteors) {
+        const grad = ctx!.createLinearGradient(m.x, m.y, m.x - m.vx * 12, m.y - m.vy * 12);
+        grad.addColorStop(0, `rgba(255,255,255,${(m.life / 60).toFixed(3)})`);
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx!.strokeStyle = grad;
+        ctx!.lineWidth = 1.6;
+        ctx!.beginPath();
+        ctx!.moveTo(m.x, m.y);
+        ctx!.lineTo(m.x - m.vx * 12, m.y - m.vy * 12);
+        ctx!.stroke();
+      }
+
+      // swifts — in a still frame, three birds hold their place in the sky
+      if (reduced) {
+        drawSwift(w * 0.42, h * 0.1, 1200, 0, 0.9);
+        drawSwift(w * 0.45, h * 0.115, 1200, 1.3, 0.9);
+        drawSwift(w * 0.39, h * 0.12, 1200, 2.1, 0.9);
+      } else {
+        for (const f of flocks) {
+          for (const b of f.birds) {
+            drawSwift(
+              f.x + b.dx,
+              f.y + b.dy + Math.sin(t / 700 + b.phase) * 2,
+              t,
+              b.phase,
+              f.alpha,
+            );
+          }
+        }
+      }
+
+      drawTemple(t);
+
+      // fireworks above the temple
+      for (const r of rockets) {
+        ctx!.strokeStyle = r.color;
+        ctx!.lineWidth = 1.4;
+        ctx!.beginPath();
+        ctx!.moveTo(r.x, r.y + 14);
+        ctx!.lineTo(r.x, r.y);
+        ctx!.stroke();
+        ctx!.fillStyle = '#fff8dc';
+        ctx!.beginPath();
+        ctx!.arc(r.x, r.y, 2, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+      for (const f of flashes) {
+        const age = t - f.bornAt;
+        if (age < 0 || age > 500) continue;
+        const fa = (1 - age / 500) * 0.22;
+        const fg = ctx!.createRadialGradient(f.x, f.y, 2, f.x, f.y, 60);
+        fg.addColorStop(0, f.color + Math.round(fa * 255).toString(16).padStart(2, '0'));
+        fg.addColorStop(1, f.color + '00');
+        ctx!.fillStyle = fg;
+        ctx!.beginPath();
+        ctx!.arc(f.x, f.y, 60, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+      for (const p of particles) {
+        const a = Math.max(0, p.life / p.max);
+        const tw = 0.75 + 0.25 * Math.sin(t / 90 + p.x);
+        ctx!.fillStyle = p.color;
+        ctx!.globalAlpha = a * tw;
+        ctx!.beginPath();
+        ctx!.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+      ctx!.globalAlpha = 1;
+
       // water
-      const water = ctx!.createLinearGradient(0, 0, 0, h);
+      const water = ctx!.createLinearGradient(0, skyH, 0, h);
       water.addColorStop(0, '#131a44');
-      water.addColorStop(0.5, '#0c1233');
+      water.addColorStop(0.55, '#0c1233');
       water.addColorStop(1, '#080d28');
       ctx!.fillStyle = water;
-      ctx!.fillRect(0, 0, w, h);
+      ctx!.fillRect(0, skyH, w, h - skyH);
+
+      // temple glow reflected just below the bank
+      for (let i = 0; i < 8; i++) {
+        const yy = skyH + 6 + i * 5;
+        const spread = 26 + i * 9;
+        const a = 0.05 + 0.05 * Math.abs(Math.sin(t / 900 + i * 1.7));
+        ctx!.strokeStyle = `rgba(246, 211, 107, ${a.toFixed(3)})`;
+        ctx!.lineWidth = 1.2;
+        ctx!.beginPath();
+        ctx!.moveTo(templeX() - spread / 2 + Math.sin(t / 1400 + i) * 4, yy);
+        ctx!.lineTo(templeX() + spread / 2 + Math.sin(t / 1400 + i) * 4, yy);
+        ctx!.stroke();
+      }
 
       // moon reflection column
-      const mx = w * 0.78;
       for (let i = 0; i < 26; i++) {
-        const yy = h * (0.06 + (i / 26) * 0.9);
+        const yy = skyH + (i / 26) * (h - skyH) * 0.92;
         const spread = 14 + (yy / h) * 46;
         const a = 0.05 + 0.1 * Math.abs(Math.sin(t / 900 + i * 1.7));
         ctx!.strokeStyle = `rgba(246, 211, 107, ${a.toFixed(3)})`;
@@ -224,11 +765,22 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         ctx!.stroke();
       }
 
+      // firework glints on the water, like the original's reflection bar
+      for (const f of flashes) {
+        const age = t - f.bornAt;
+        if (age < 0 || age > 500) continue;
+        const fa = (1 - age / 500) * 0.14;
+        ctx!.fillStyle = f.color;
+        ctx!.globalAlpha = fa;
+        ctx!.fillRect(f.x - 12, skyH + (skyH - f.y) * 0.22, 24, 2);
+      }
+      ctx!.globalAlpha = 1;
+
       // drifting ripple lines
       ctx!.strokeStyle = 'rgba(180, 200, 255, 0.08)';
       ctx!.lineWidth = 1;
       for (let i = 0; i < 7; i++) {
-        const yy = h * (0.16 + i * 0.12);
+        const yy = h * (0.34 + i * 0.09);
         const off = (t / 60 + i * 90) % (w + 200) - 100;
         ctx!.beginPath();
         ctx!.moveTo(off, yy);
@@ -236,9 +788,39 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         ctx!.stroke();
       }
 
-      // far bank silhouette
-      ctx!.fillStyle = '#05071a';
-      ctx!.fillRect(0, 0, w, h * 0.055);
+      // rain rings where drops hit the water
+      for (const r of rings) {
+        ctx!.strokeStyle = `rgba(180, 200, 255, ${(r.a * 0.25).toFixed(3)})`;
+        ctx!.lineWidth = 1;
+        ctx!.beginPath();
+        ctx!.ellipse(r.x, r.y, r.r, r.r * 0.32, 0, 0, Math.PI * 2);
+        ctx!.stroke();
+      }
+
+      // rain streaks — light, slanted with the wind, never over the tags
+      const rain = wthr.rainShown;
+      if (rain > 0.03) {
+        const count = Math.min(110, Math.floor(rain * 120));
+        const slant = wthr.dirX * wthr.windShown * 4 - 2;
+        ctx!.strokeStyle = `rgba(220, 230, 255, ${(0.28 * Math.min(rain, 0.8)).toFixed(3)})`;
+        ctx!.lineWidth = 1;
+        ctx!.beginPath();
+        for (let i = 0; i < count; i++) {
+          const d = drops[i];
+          ctx!.moveTo(d.x, d.y);
+          ctx!.lineTo(d.x + slant, d.y + d.len);
+        }
+        ctx!.stroke();
+      }
+
+      // mist over the water on foggy nights
+      if (wthr.fogShown > 0.03) {
+        const mg = ctx!.createLinearGradient(0, skyH, 0, skyH + h * 0.12);
+        mg.addColorStop(0, `rgba(180, 195, 230, ${(0.09 * wthr.fogShown).toFixed(3)})`);
+        mg.addColorStop(1, 'rgba(180, 195, 230, 0)');
+        ctx!.fillStyle = mg;
+        ctx!.fillRect(0, skyH, w, h * 0.12);
+      }
 
       // krathongs, far rows first
       const list = wishesRef.current;
@@ -250,16 +832,158 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     }
 
     function frame(t: number) {
+      const now = performance.now();
+      const wthr = weatherRef.current;
+      const festival = isFestivalNight();
+
+      // weather: live targets, or the fallback cycle; displayed values ease
+      if (wthr.mode === 'fallback') {
+        const fb = fallbackTargets(now - startTime);
+        wthr.rain = fb.rain;
+        wthr.cloud = fb.cloud;
+        wthr.wind = fb.wind;
+        wthr.fog = false;
+        wthr.storm = false;
+        wthr.dirX += (-0.6 - wthr.dirX) * 0.002;
+      }
+      const ease = 0.02;
+      wthr.rainShown += (wthr.rain - wthr.rainShown) * ease;
+      wthr.cloudShown += (wthr.cloud - wthr.cloudShown) * ease;
+      wthr.windShown += (wthr.wind - wthr.windShown) * ease;
+      wthr.fogShown += ((wthr.fog ? 1 : 0) - wthr.fogShown) * ease;
+
       syncSprites();
+      const drift = 0.75 + wthr.windShown * 0.5;
       for (const s of sprites.values()) {
-        s.x += s.speed;
+        s.x += s.speed * drift;
         if (s.x > w + 50) {
           s.x = -50;
           s.row = Math.floor(Math.random() * ROWS);
           s.scale = rowScale(s.row);
         }
-        if (performance.now() - s.bornAt > 5000) s.fresh = false;
+        if (now - s.bornAt > 5000) s.fresh = false;
       }
+
+      // clouds drift with the wind
+      const cloudVx = wthr.dirX * (0.08 + wthr.windShown * 0.25);
+      for (const c of clouds) {
+        c.x += cloudVx * c.s;
+        if (c.x < -90) c.x = w + 80;
+        if (c.x > w + 90) c.x = -80;
+      }
+
+      // rain falls; drops recycle at the top
+      if (wthr.rainShown > 0.03) {
+        for (const d of drops) {
+          d.y += d.speed * (0.8 + wthr.rainShown);
+          d.x += wthr.dirX * wthr.windShown * 1.5;
+          if (d.y > h) {
+            d.y = -10;
+            d.x = Math.random() * w;
+          }
+        }
+        if (Math.random() < wthr.rainShown * 0.25 && rings.length < 28) {
+          rings.push({
+            x: Math.random() * w,
+            y: h * (0.3 + Math.random() * 0.62),
+            r: 2,
+            max: 10 + Math.random() * 14,
+            a: 0.3,
+          });
+        }
+      }
+      rings = rings.filter((r) => {
+        r.r += 0.6;
+        r.a -= 0.008;
+        return r.a > 0 && r.r < r.max;
+      });
+
+      // swifts — a flock every little while, never an empty sky for long
+      nextFlock -= 16;
+      if (nextFlock <= 0) {
+        nextFlock = 9000 + Math.random() * 12000;
+        spawnFlock(festival);
+      }
+      flocks = flocks.filter((f) => {
+        f.x += f.vx * (0.8 + wthr.windShown * 0.3);
+        f.y += f.vy + Math.sin(t / 900 + f.x) * 0.05;
+        f.alpha = Math.min(0.9, f.alpha + 0.01);
+        if (f.toTemple) {
+          const d = Math.hypot(templeX() - f.x, templeTopY() - f.y);
+          if (d < 70) f.alpha -= 0.03;
+        }
+        if (f.alpha <= 0) return false;
+        return f.x > -80 && f.x < w + 80;
+      });
+
+      // falling stars
+      nextMeteor -= 16;
+      if (nextMeteor <= 0) {
+        nextMeteor = 6000 + Math.random() * 9000;
+        if (meteors.length < 3) {
+          meteors.push({
+            x: w * (0.15 + Math.random() * 0.6),
+            y: h * Math.random() * 0.18,
+            vx: 7,
+            vy: 3.2,
+            life: 60,
+          });
+        }
+      }
+      meteors = meteors.filter((m) => {
+        m.x += m.vx;
+        m.y += m.vy;
+        m.life -= 1;
+        return m.life > 0;
+      });
+
+      // distant lightning in a storm
+      if (wthr.storm) {
+        nextBolt -= 16;
+        if (nextBolt <= 0) {
+          nextBolt = 9000 + Math.random() * 11000;
+          boltStart = t;
+          boltX = w * (0.1 + Math.random() * 0.8);
+        }
+      }
+
+      // fireworks — automatic on the night itself, or during a preview show
+      if (festival) {
+        nextRocket -= 16;
+        if (nextRocket <= 0) {
+          nextRocket = 1200 + Math.random() * 1400;
+          launchRocket();
+        }
+      }
+      if (showUntil > now) {
+        nextShowRocket -= 16;
+        if (nextShowRocket <= 0) {
+          nextShowRocket = 700 + Math.random() * 400;
+          launchRocket();
+        }
+      }
+      for (let i = rockets.length - 1; i >= 0; i--) {
+        const r = rockets[i];
+        r.y -= r.vy;
+        r.x += Math.sin(now / 300 + r.wobble) * 0.3;
+        r.vy *= 0.985;
+        if (r.y <= r.targetY || r.vy < 0.5) {
+          burst(r, t);
+          rockets.splice(i, 1);
+        }
+      }
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.vy += 0.02;
+        p.vx *= 0.985;
+        p.vy *= 0.985;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 1;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+      flashes = flashes.filter((f) => t - f.bornAt < 500);
+
       draw(t);
       raf = requestAnimationFrame(frame);
     }
@@ -277,6 +1001,19 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         }
       }
       return best;
+    }
+
+    // Five quick clicks anywhere on the canvas (within ~4 seconds) launch
+    // a short fireworks show. Nothing in the UI hints at it.
+    function noteClick() {
+      const now = performance.now();
+      clickTimes.push(now);
+      while (clickTimes.length > 0 && now - clickTimes[0] > 4000) clickTimes.shift();
+      if (clickTimes.length >= 5) {
+        clickTimes.length = 0;
+        showUntil = now + 25000;
+        nextShowRocket = 0;
+      }
     }
 
     function onMove(e: MouseEvent) {
@@ -301,6 +1038,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     }
 
     function onClick(e: MouseEvent) {
+      noteClick();
       const rect = canvas!.getBoundingClientRect();
       const s = spriteAt(e.clientX - rect.left, e.clientY - rect.top);
       if (s) {
@@ -320,8 +1058,9 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     canvas.addEventListener('mousemove', onMove);
     canvas.addEventListener('click', onClick);
     canvas.addEventListener('mouseleave', onLeave);
-    // touch: tap = select
+    // touch: tap = select (and counts toward the hidden show)
     canvas.addEventListener('touchend', (e: TouchEvent) => {
+      noteClick();
       const touch = e.changedTouches[0];
       const rect = canvas!.getBoundingClientRect();
       const s = spriteAt(touch.clientX - rect.left, touch.clientY - rect.top);
