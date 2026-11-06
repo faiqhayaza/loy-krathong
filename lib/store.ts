@@ -130,6 +130,19 @@ export async function listWishes(): Promise<{ wishes: Wish[]; totalReactions: nu
   return { wishes, totalReactions };
 }
 
+/**
+ * Stored wishes only — what real visitors floated, newest first, with
+ * reaction counts merged in. Seeds are NOT included (they ship with the
+ * site, they were never inputted). This is what the admin export serves.
+ */
+export async function listStoredWishes(): Promise<Wish[]> {
+  const stored = await readStoredWishes();
+  const counts = await readReactionCounts(stored.map((w) => w.id));
+  return stored
+    .map((w) => ({ ...w, reactions: counts.get(w.id) ?? { ...EMPTY_REACTIONS } }))
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
 // ---- Writes ---------------------------------------------------------------
 
 export async function addWish(wish: Wish): Promise<void> {

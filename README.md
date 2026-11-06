@@ -46,7 +46,7 @@ npm start        # serve the production build
 | --- | --- | --- |
 | `UPSTASH_REDIS_REST_URL` | No | Upstash Redis REST URL for the shared river |
 | `UPSTASH_REDIS_REST_TOKEN` | No | Upstash Redis REST token |
-| `LOY_ADMIN_TOKEN` | No | Enables `DELETE /api/wishes/[id]` (header `x-admin-token`) |
+| `LOY_ADMIN_TOKEN` | No | Enables `DELETE /api/wishes/[id]` and `GET /api/admin/export` (header `x-admin-token`), plus the `/admin` export page |
 
 Copy `.env.example` to `.env.local` and fill in what you need.
 
@@ -76,6 +76,11 @@ Copy `.env.example` to `.env.local` and fill in what you need.
   is guarded client-side (localStorage).
 - `DELETE /api/wishes/[id]` — admin only. Requires `LOY_ADMIN_TOKEN`
   to be set and header `x-admin-token` to match; otherwise 404/401.
+- `GET /api/admin/export?format=csv` (default) or `?format=json` — admin
+  only, same token header. Downloads every wish visitors actually
+  floated (no seeds, no worries — worries are never stored) as a CSV
+  spreadsheet or JSON. There is also a plain `/admin` page: paste the
+  token, pick a format, download the file.
 
 ## Deploy (Vercel)
 
