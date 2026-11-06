@@ -46,7 +46,7 @@ npm start        # serve the production build
 | --- | --- | --- |
 | `UPSTASH_REDIS_REST_URL` | No | Upstash Redis REST URL for the shared river |
 | `UPSTASH_REDIS_REST_TOKEN` | No | Upstash Redis REST token |
-| `LOY_ADMIN_TOKEN` | No | Enables `DELETE /api/wishes/[id]` and `GET /api/admin/export` (header `x-admin-token`), plus the `/admin` export page |
+| `LOY_ADMIN_TOKEN` | No | Admin password for `DELETE /api/wishes/[id]` and `GET /api/admin/export` (header `x-admin-token`), plus the `/admin` export page |
 
 Copy `.env.example` to `.env.local` and fill in what you need.
 

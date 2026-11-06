@@ -1,9 +1,8 @@
 // Admin export page — deliberately plain and unlinked from the main site.
-// Paste the admin token (Vercel → project → Settings → Environment
-// Variables → LOY_ADMIN_TOKEN), pick a format, and download everything
-// visitors floated. The token lives only in this page's memory: it is
-// never stored, never put in a URL, and never sent anywhere except the
-// export request itself, as a header.
+// Type the password, pick a format, and download everything visitors
+// floated. The password lives only in this page's memory: it is never
+// stored, never put in a URL, and never sent anywhere except the export
+// request itself, as a header.
 
 'use client';
 
@@ -27,11 +26,11 @@ export default function AdminPage() {
         headers: { 'x-admin-token': token.trim() },
       });
       if (res.status === 401) {
-        setStatus('Wrong token — check LOY_ADMIN_TOKEN in the Vercel dashboard.');
+        setStatus('Wrong password — try again.');
         return;
       }
       if (res.status === 404) {
-        setStatus('Export is not set up on this deployment (no admin token configured).');
+        setStatus('Export is not set up on this deployment (no password configured).');
         return;
       }
       if (!res.ok) {
@@ -78,14 +77,14 @@ export default function AdminPage() {
           are never sent or stored.
         </p>
         <label style={{ display: 'block', fontSize: 14, marginBottom: 6 }} htmlFor="admin-token">
-          Admin token
+          Password
         </label>
         <input
           id="admin-token"
           type="password"
           value={token}
           onChange={(e) => setToken(e.target.value)}
-          placeholder="LOY_ADMIN_TOKEN from the Vercel dashboard"
+          placeholder="The admin password"
           autoComplete="off"
           style={{
             width: '100%',
@@ -141,8 +140,9 @@ export default function AdminPage() {
         </button>
         {status && <p style={{ marginTop: 16, lineHeight: 1.5 }}>{status}</p>}
         <p style={{ color: '#7d86b8', fontSize: 13, lineHeight: 1.6, marginTop: 24 }}>
-          The token is the LOY_ADMIN_TOKEN environment variable on the Vercel project.
-          It is only used for this download and is not saved anywhere on this page.
+          The password is the LOY_ADMIN_TOKEN environment variable on the Vercel
+          project. It is only used for this download and is not saved anywhere on
+          this page.
         </p>
       </div>
     </main>
