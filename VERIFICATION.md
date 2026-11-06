@@ -238,6 +238,44 @@ untouched.)
   on it after deploy, especially the show at T+20/T+40/T+55.
 - Not pushed, not deployed; working tree left ready for review.
 
+## 2026-11-06 evening — fix round 4: the show never triggered
+
+(`components/RiverCanvas.tsx` + `app/page.tsx`; temple, moon, weather,
+show length (60 s), colours, cadence and caps untouched.)
+- **The 60 s show never fired at all.** Live timing test: no fireworks
+  at T+20, T+40 or T+55 — nothing, where earlier tests always showed
+  bursts right after the 5 clicks. Likely cause: the checker's clicks
+  landed on the krathong, the first click opened the wish detail panel
+  below the river, the layout shifted, and later clicks missed the
+  canvas element — but the trigger only counted clicks landing exactly
+  on the canvas. A second contributor: the 4 s window is tight when
+  clicks come slowly (~1 s each from a browser agent).
+- **Fix: count clicks anywhere in the river section.** The `#river`
+  section in `app/page.tsx` now dispatches one `loy:river-click`
+  window event per click (its `onClick`); `RiverCanvas` listens for
+  it and counts. The canvas handlers no longer count anything, so one
+  physical click is counted exactly once — no double-count via
+  bubbling. Clicks on the wish detail panel, the river bar and the
+  empty state all count. Clicks inside the builder form (`#float`)
+  are excluded, so composing a wish can never set the show off by
+  accident. Touch taps work the same way: the tap's synthetic click
+  bubbles to the section and counts once.
+- **Window widened to 6 s** (was 4 s): five clicks within 6 s trigger
+  the 60 s show; four clicks never do; five clicks spread over more
+  than 6 s do not.
+- Verification this round: `npm run build` passes clean (see below).
+  Node-simulated the trigger logic exactly as written (7 checks, all
+  pass): 5 clicks across canvas + detail panel within 6 s trigger;
+  4 clicks do not; 5 clicks spread over 7 s do not; 3 physical clicks
+  count 3 under the new wiring (no trigger) where counting via both
+  canvas and section would count 6 (false trigger); 5 clicks inside
+  the builder do not trigger; 5 unhurried clicks 1.2 s apart trigger;
+  5 clicks spanning exactly 6.0 s trigger. No live-browser check was
+  possible from here — the trigger still needs eyes on it after
+  deploy: click 5 times with the first click landing on the krathong
+  and confirm the show fires.
+- Not pushed, not deployed; working tree left ready for review.
+
 ## 2026-11-06 evening — shared-store readiness
 
 - Vercel's Upstash integration no longer offers a free plan (cheapest is

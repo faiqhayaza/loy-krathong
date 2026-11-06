@@ -1148,12 +1148,15 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       return best;
     }
 
-    // Five quick clicks anywhere on the canvas (within ~4 seconds) launch
-    // a short fireworks show. Nothing in the UI hints at it.
+    // Five unhurried clicks anywhere in the river area (within ~6
+    // seconds) launch the 60-second fireworks show. Nothing in the UI
+    // hints at it. Clicks arrive via the 'loy:river-click' event the
+    // river section dispatches — never counted here directly, so one
+    // physical click is counted exactly once.
     function noteClick() {
       const now = performance.now();
       clickTimes.push(now);
-      while (clickTimes.length > 0 && now - clickTimes[0] > 4000) clickTimes.shift();
+      while (clickTimes.length > 0 && now - clickTimes[0] > 6000) clickTimes.shift();
       if (clickTimes.length >= 5) {
         clickTimes.length = 0;
         showElapsed = 0;
@@ -1183,7 +1186,6 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     }
 
     function onClick(e: MouseEvent) {
-      noteClick();
       const rect = canvas!.getBoundingClientRect();
       const s = spriteAt(e.clientX - rect.left, e.clientY - rect.top);
       if (s) {
@@ -1203,9 +1205,16 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     canvas.addEventListener('mousemove', onMove);
     canvas.addEventListener('click', onClick);
     canvas.addEventListener('mouseleave', onLeave);
-    // touch: tap = select (and counts toward the hidden show)
+    // Hidden show trigger: the river section dispatches one
+    // 'loy:river-click' per physical click anywhere in the river area
+    // (canvas, wish panel, empty state — not the builder form), so a
+    // click that opens the wish panel still counts, and a click that
+    // lands on the canvas is never counted twice.
+    const onRiverClick = () => noteClick();
+    window.addEventListener('loy:river-click', onRiverClick);
+    // touch: tap = select. The tap's synthetic click bubbles to the river
+    // section and counts toward the hidden show exactly once.
     canvas.addEventListener('touchend', (e: TouchEvent) => {
-      noteClick();
       const touch = e.changedTouches[0];
       const rect = canvas!.getBoundingClientRect();
       const s = spriteAt(touch.clientX - rect.left, touch.clientY - rect.top);
@@ -1223,6 +1232,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      window.removeEventListener('loy:river-click', onRiverClick);
       canvas.removeEventListener('mousemove', onMove);
       canvas.removeEventListener('click', onClick);
       canvas.removeEventListener('mouseleave', onLeave);

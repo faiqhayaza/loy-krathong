@@ -272,7 +272,21 @@ export default function Page() {
       </section>
 
       {/* River + builder */}
-      <section className="section reveal" id="river" aria-labelledby="river-title">
+      <section
+        className="section reveal"
+        id="river"
+        aria-labelledby="river-title"
+        onClick={(e) => {
+          // Hidden fireworks easter egg: any click in the river area
+          // counts — the canvas, the wish detail panel, the empty state.
+          // The builder form (#float) is excluded, so composing a wish
+          // never sets it off by accident. One physical click dispatches
+          // exactly one event; the canvas itself counts nothing, so a
+          // click is never counted twice.
+          if ((e.target as HTMLElement).closest('#float')) return;
+          window.dispatchEvent(new Event('loy:river-click'));
+        }}
+      >
         <div className="section-head">
           <h2 id="river-title">{s.riverTitle}</h2>
           <span className="pill" aria-live="polite">
