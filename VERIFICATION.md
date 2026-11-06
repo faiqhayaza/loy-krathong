@@ -145,6 +145,60 @@ Two findings from the live visual check of the round-2 scene
   +20 s and the overcast sky at tonight's 99% cloud cover.
 - Not pushed, not deployed; working tree left ready for review.
 
+## 2026-11-06 evening — fix round 2: real Wat Arun, deeper moon veil, fireworks wall-clock timing
+
+(`components/RiverCanvas.tsx` only; everything else untouched.)
+- **Temple did not read as Thai.** Faiq: make it like Wat Arun, with
+  smaller wats nearby just like Wat Arun. The old prang was a generic
+  stepped tower (rectangular tiers, short stubby shaft). Redrawn from
+  Wat Arun photos (silhouette at sunset, front view — central prang
+  with broad stepped base, long concave lotus-bud shaft, trident
+  finial; four satellites in the same shape): one reusable `prang()`
+  now draws three receding base terraces, a long shaft whose outline
+  curves inward as it rises (quadratic control point pulled toward
+  the axis), a lotus-bud dome, a thin trident finial (stem + small
+  three-pronged fork), and miniature spires at the top terrace
+  corners. The skyline is now the central prang (still the tallest,
+  same position/scale as before) plus four satellites in the same
+  shape — a nearer pair on each side stepping down, and a farther,
+  lower pair — with the stepped base platform and sala roofs with
+  upturned eaves beneath. Windows and low blocks repositioned to
+  match the new prang positions.
+- **Moon still too visible at 99% cloud.** A second live check found
+  the disc still clearly readable with clear-sky gaps between
+  clouds. New `sheetAmount()` smoothsteps 95% → 0 to 100% → 1: at
+  ≥95% cover a continuous thin cloud sheet (`rgba(24,30,62)`, up to
+  0.5 alpha, plus two slow soft wisps) lies over the whole sky band
+  — over the moon, the stars and the cloud tops, under the temple
+  and the birds, never touching the water or krathongs — and the
+  moon disc alpha drops to ~0.18 at 99% cover and ~0.15 at 100%
+  (was 0.40). Below 95% the scene behaves exactly as before.
+  Temple windows and krathong flames stay undimmed.
+- **Fireworks show ran ~10 s, not 25 s** (precise live timing test:
+  bursts at T+0 and T+10, empty sky at T+15/T+20/T+24). Diagnosis:
+  the launchers were frame-count-based (`nextShowRocket -= 16`,
+  assuming 60 fps) while the show length is wall-clock-based
+  (`showUntil = performance.now() + 25000`), so below 60 fps the
+  rocket timers advanced far slower than real time and the window
+  expired with few rockets launched. Fix: `frame()` now computes a
+  real delta `dt = min(50, now - lastNow)` and both fireworks
+  timers decrement by `dt` — a rocket every ~0.5–0.8 s of real time
+  for the full 25 s at any frame rate, same for the automatic
+  festival-night rockets (1200–2600 ms). Only the fireworks
+  scheduling changed; ambient timers (flocks, meteors, lightning)
+  stay frame-based, and the 25 s length, colour cycling, rocket
+  caps and 5-click trigger are untouched.
+- Verification this round: `npm run build` passes clean (see below).
+  Node-checked the sheet curve (95%→0, 97.5%→0.5, 99%→0.896,
+  100%→1) and the moon disc alpha at 95/99/100% cover
+  (0.49/0.18/0.15), and the dt scheduling (at 20 fps a rocket
+  still launches every ~0.5–0.8 s of real time across a full
+  25 s window). No live-browser visual check was possible from
+  here — the canvas still needs eyes on it after deploy, especially
+  the temple silhouette, the show at T+15/T+20/T+24, and the moon
+  at tonight's 99% cloud cover.
+- Not pushed, not deployed; working tree left ready for review.
+
 ## 2026-11-06 evening — shared-store readiness
 
 - Vercel's Upstash integration no longer offers a free plan (cheapest is

@@ -110,6 +110,17 @@ function overcastAmount(cloud: number): number {
 }
 
 /**
+ * Cloud-sheet amount: 0 at ≤95% cloud cover, 1 at 100% — smoothstep.
+ * The last few percent of cover close the remaining clear gaps over the
+ * moon, so at 99–100% the moon is barely there instead of shining
+ * through a hole in the deck.
+ */
+function sheetAmount(cloud: number): number {
+  const t = Math.max(0, Math.min(1, (cloud - 95) / 5));
+  return t * t * (3 - 2 * t);
+}
+
+/**
  * Fallback weather when the live fetch fails: a gentle 4-minute cycle —
  * clear (70s) → cloudy (70s) → light shower (55s) → clearing (45s).
  * Displayed values ease toward the targets, so the change is gradual.
@@ -234,6 +245,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     let nextFlock = 6000;
     let nextRocket = 2000;
     let nextShowRocket = 0;
+    let lastNow = 0; // for the wall-clock delta the fireworks timers run on
     let nextBolt = 9000;
     let boltStart = -1;
     let boltX = 0;
@@ -329,32 +341,66 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     }
 
     // --- temple -----------------------------------------------------------
-    // Central prang with tiered base and a tapering spire, drawn as one
-    // stepped profile. bw is the base half-width, th the total height.
+    // One Wat Arun prang, drawn from the real thing: a wide stepped
+    // pyramidal base (three receding terraces), then a long, narrow shaft
+    // whose outline curves inward as it rises — the concave lotus-bud /
+    // corncob profile — topped by a small dome and a slender trident
+    // finial, with tiny spires at the terrace corners. bw is the base
+    // half-width, th the total height (finial included).
     function prang(x: number, baseY: number, bw: number, th: number) {
+      const y0 = baseY;
+      const y1 = baseY - th * 0.13; // terrace 1 top
+      const y2 = baseY - th * 0.26; // terrace 2 top
+      const y3 = baseY - th * 0.38; // terrace 3 top / shaft base
+      const yD = baseY - th * 0.84; // shaft top / dome springing
+      const yT = baseY - th; // finial tip
+      // The shaft's concave curve: the control point sits close to the
+      // axis, so the outline pinches inward as it climbs.
+      const shaftCtrl = bw * 0.2;
+      const shaftTop = bw * 0.13;
       ctx!.beginPath();
-      ctx!.moveTo(x - bw, baseY);
-      ctx!.lineTo(x - bw, baseY - th * 0.18);
-      ctx!.lineTo(x - bw * 0.78, baseY - th * 0.18);
-      ctx!.lineTo(x - bw * 0.78, baseY - th * 0.36);
-      ctx!.lineTo(x - bw * 0.58, baseY - th * 0.36);
-      ctx!.lineTo(x - bw * 0.58, baseY - th * 0.52);
-      ctx!.lineTo(x - bw * 0.4, baseY - th * 0.52);
-      ctx!.lineTo(x - bw * 0.4, baseY - th * 0.62);
-      ctx!.quadraticCurveTo(x - bw * 0.22, baseY - th * 0.78, x, baseY - th);
-      ctx!.quadraticCurveTo(x + bw * 0.22, baseY - th * 0.78, x + bw * 0.4, baseY - th * 0.62);
-      ctx!.lineTo(x + bw * 0.4, baseY - th * 0.52);
-      ctx!.lineTo(x + bw * 0.58, baseY - th * 0.52);
-      ctx!.lineTo(x + bw * 0.58, baseY - th * 0.36);
-      ctx!.lineTo(x + bw * 0.78, baseY - th * 0.36);
-      ctx!.lineTo(x + bw * 0.78, baseY - th * 0.18);
-      ctx!.lineTo(x + bw, baseY - th * 0.18);
-      ctx!.lineTo(x + bw, baseY);
+      ctx!.moveTo(x - bw, y0);
+      ctx!.lineTo(x - bw, y1);
+      ctx!.lineTo(x - bw * 0.8, y1);
+      ctx!.lineTo(x - bw * 0.8, y2);
+      ctx!.lineTo(x - bw * 0.62, y2);
+      ctx!.lineTo(x - bw * 0.62, y3);
+      ctx!.lineTo(x - bw * 0.5, y3);
+      ctx!.quadraticCurveTo(x - shaftCtrl, baseY - th * 0.62, x - shaftTop, yD);
+      // lotus-bud dome over the shaft top
+      ctx!.quadraticCurveTo(x - shaftTop * 0.7, baseY - th * 0.93, x, baseY - th * 0.93);
+      ctx!.quadraticCurveTo(x + shaftTop * 0.7, baseY - th * 0.93, x + shaftTop, yD);
+      ctx!.quadraticCurveTo(x + shaftCtrl, baseY - th * 0.62, x + bw * 0.5, y3);
+      ctx!.lineTo(x + bw * 0.62, y3);
+      ctx!.lineTo(x + bw * 0.62, y2);
+      ctx!.lineTo(x + bw * 0.8, y2);
+      ctx!.lineTo(x + bw * 0.8, y1);
+      ctx!.lineTo(x + bw, y1);
+      ctx!.lineTo(x + bw, y0);
       ctx!.closePath();
       ctx!.fill();
+      // trident finial: a thin stem from the dome to the tip, with a
+      // small three-pronged fork at the top
+      const stemW = Math.max(1, bw * 0.045);
+      ctx!.fillRect(x - stemW / 2, baseY - th * 0.93, stemW, th * 0.07);
+      ctx!.lineWidth = Math.max(1, bw * 0.04);
+      ctx!.strokeStyle = ctx!.fillStyle as string;
       ctx!.beginPath();
-      ctx!.arc(x, baseY - th - 2, 2, 0, Math.PI * 2);
-      ctx!.fill();
+      ctx!.moveTo(x, yT);
+      ctx!.lineTo(x - stemW * 2.2, yT + th * 0.035);
+      ctx!.moveTo(x, yT);
+      ctx!.lineTo(x + stemW * 2.2, yT + th * 0.035);
+      ctx!.stroke();
+      // miniature spires at the top terrace corners
+      for (const sx of [-1, 1]) {
+        const px = x + sx * bw * 0.62;
+        ctx!.beginPath();
+        ctx!.moveTo(px - bw * 0.07, y3);
+        ctx!.lineTo(px, y3 - th * 0.05);
+        ctx!.lineTo(px + bw * 0.07, y3);
+        ctx!.closePath();
+        ctx!.fill();
+      }
     }
 
     // A temple roof in two tiers, eave ends flicking upward.
@@ -391,13 +437,18 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       ctx!.fillRect(templeX() - w * 0.24, base - h * 0.24, w * 0.48, h * 0.26);
 
       ctx!.fillStyle = '#04061a';
-      // low riverside blocks between the spires
-      ctx!.fillRect(w * 0.185, base - h * 0.018, w * 0.05, h * 0.018);
-      ctx!.fillRect(w * 0.365, base - h * 0.018, w * 0.05, h * 0.018);
-      tieredRoof(w * 0.07, base, w * 0.05, h * 0.05);
-      tieredRoof(w * 0.56, base, w * 0.045, h * 0.045);
-      prang(w * 0.14, base, w * 0.022, h * 0.1);
-      prang(w * 0.46, base, w * 0.022, h * 0.1);
+      // low riverside blocks flanking the central platform
+      ctx!.fillRect(w * 0.25, base - h * 0.018, w * 0.04, h * 0.018);
+      ctx!.fillRect(w * 0.35, base - h * 0.018, w * 0.04, h * 0.018);
+      tieredRoof(w * 0.055, base, w * 0.04, h * 0.05);
+      tieredRoof(w * 0.575, base, w * 0.04, h * 0.045);
+      // Wat Arun's four satellite prangs, two on each side, stepping down
+      // in size away from the centre — the nearer pair tall, the farther
+      // pair low on the horizon
+      prang(w * 0.115, base, w * 0.018, h * 0.068);
+      prang(w * 0.505, base, w * 0.018, h * 0.068);
+      prang(w * 0.185, base, w * 0.026, h * 0.105);
+      prang(w * 0.415, base, w * 0.026, h * 0.105);
       prang(templeX(), base, w * 0.045, h * 0.17);
       // crisp bank line where sky meets water
       ctx!.fillRect(0, base - 1, w, 2);
@@ -405,9 +456,9 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // warm windows, gently twinkling
       const windows: [number, number][] = [
         [0.3, 0.03], [0.3, 0.065], [0.3, 0.1],
-        [0.14, 0.025], [0.46, 0.025],
-        [0.07, 0.012], [0.56, 0.012],
-        [0.2, 0.008], [0.38, 0.008],
+        [0.185, 0.03], [0.415, 0.03],
+        [0.055, 0.012], [0.575, 0.012],
+        [0.25, 0.008], [0.35, 0.008],
       ];
       windows.forEach(([fx, fy], i) => {
         const a = 0.45 + 0.3 * Math.sin(t / 700 + i * 1.9);
@@ -604,6 +655,9 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       const wthr = weatherRef.current;
       const skyH = horizon();
       const overcast = overcastAmount(wthr.cloudShown);
+      // At ≥95% cover a continuous cloud sheet closes the last clear gaps
+      // over the moon (see below); the disc fades to ~0.15 at full cover.
+      const sheet = sheetAmount(wthr.cloudShown);
       // Clouds dim stars and moon; a heavy overcast veils them almost
       // fully — the moon stays faintly visible, never bright.
       const dim = (1 - 0.6 * (wthr.cloudShown / 100)) * (1 - 0.85 * overcast);
@@ -653,7 +707,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       ctx!.arc(mx, my, mr * 3.2, 0, Math.PI * 2);
       ctx!.fill();
       ctx!.save();
-      ctx!.globalAlpha = 1 - overcast * 0.6;
+      ctx!.globalAlpha = (1 - overcast * 0.6) * (1 - sheet * 0.62);
       const moon = ctx!.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, mr * 0.2, mx, my, mr);
       moon.addColorStop(0, '#fffbe8');
       moon.addColorStop(1, '#f2dfa0');
@@ -693,6 +747,24 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         ctx!.fillStyle = `rgba(150, 165, 220, ${(0.1 + overcast * 0.06).toFixed(3)})`;
         ctx!.beginPath();
         ctx!.ellipse(c.x, c.y - 4 * cs, 40 * cs, 8 * cs, 0, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+
+      // At ≥95% cover a continuous thin cloud sheet lies over the whole
+      // sky band — over the moon, the stars and the cloud tops alike —
+      // so no clear gap is left for the moon to shine through. It sits
+      // under the temple and the birds, and never touches the water or
+      // the krathongs; a couple of slow, soft wisps keep it reading as
+      // cloud rather than a flat wash.
+      if (sheet > 0.01) {
+        ctx!.fillStyle = `rgba(24, 30, 62, ${(sheet * 0.5).toFixed(3)})`;
+        ctx!.fillRect(0, 0, w, skyH);
+        ctx!.fillStyle = `rgba(120, 134, 175, ${(sheet * 0.1).toFixed(3)})`;
+        const wispX = ((t / 90 + w * 0.2) % (w + 400)) - 200;
+        const wispX2 = ((t / 130 + w * 0.65) % (w + 400)) - 200;
+        ctx!.beginPath();
+        ctx!.ellipse(wispX, skyH * 0.35, w * 0.3, skyH * 0.16, 0, 0, Math.PI * 2);
+        ctx!.ellipse(wispX2, skyH * 0.62, w * 0.26, skyH * 0.14, 0, 0, Math.PI * 2);
         ctx!.fill();
       }
 
@@ -881,6 +953,14 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
 
     function frame(t: number) {
       const now = performance.now();
+      // Real elapsed time since the last frame (clamped so a tab that was
+      // hidden doesn't jump the timers). The fireworks launchers run on
+      // this wall-clock delta, not on a fixed 16ms-per-frame assumption:
+      // at anything below 60fps the old fixed decrement advanced the
+      // rocket timers far slower than real time, so the 25s show ran out
+      // of wall clock with only ~10s of rockets launched.
+      const dt = Math.min(50, Math.max(0, now - lastNow));
+      lastNow = now;
       const wthr = weatherRef.current;
       const festival = isFestivalNight();
 
@@ -997,14 +1077,14 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
 
       // fireworks — automatic on the night itself, or during a preview show
       if (festival) {
-        nextRocket -= 16;
+        nextRocket -= dt;
         if (nextRocket <= 0) {
           nextRocket = 1200 + Math.random() * 1400;
           launchRocket();
         }
       }
       if (showUntil > now) {
-        nextShowRocket -= 16;
+        nextShowRocket -= dt;
         if (nextShowRocket <= 0) {
           // a rocket every ~0.5–0.8 s, and sometimes two at once, so the
           // sky is rarely empty during the show
