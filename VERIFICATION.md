@@ -49,7 +49,22 @@ in-memory store and died with it — nothing was persisted, no Redis was
 configured, and the final `LOY_ADMIN_TOKEN=test-token` was only ever set
 for that local run (it is not in any file; `.env.example` ships empty).
 
-## Not yet verified live
+## 2026-11-06 evening — shared-store readiness
+
+- Vercel's Upstash integration no longer offers a free plan (cheapest is
+  Pay As You Go, $0.20 / 100K commands), so the site reuses the team's
+  existing free Upstash store `faiq-personal` (Upstash for Redis, Free
+  plan, connected to the loy-krathong project as a second project on
+  2026-11-06, Production + Preview). Wishes live under the `loy:*` key
+  prefix, isolated from that store's other data. That store supplies
+  KV_REST_API_URL / KV_REST_API_TOKEN (KV prefix), so `lib/store.ts`
+  accepts those names as well as UPSTASH_REDIS_REST_URL / TOKEN.
+  `GET /api/wishes` reports `storage: "redis"` when the store is live.
+- Because the free tier has a daily command budget and every visitor
+  polls `GET /api/wishes`, the GET handler now caches its response for
+  30s per server instance (`app/api/wishes/route.ts`); POST clears the
+  cache so a new wish still appears immediately. Reaction counts are
+  still read from Redis on a cache miss.
 
 - **Upstash Redis backend**: no Upstash credentials exist yet, so the
   Redis code path (LPUSH / HINCRBY / rate-limit keys) is exercised only by

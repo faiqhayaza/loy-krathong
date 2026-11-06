@@ -13,14 +13,31 @@ import {
   type Lang,
   type Wish,
 } from '@/lib/data';
-import { addWish, checkRateLimit, listWishes } from '@/lib/store';
+import { addWish, checkRateLimit, listWishes, usingRedis } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+// The shared river is backed by a free-tier Redis with a daily command
+// budget, and every visitor polls this endpoint. A short server-side
+// cache (one Redis read per 30s per instance, at most) keeps a busy
+// festival night from exhausting it. Writes clear the cache, so a new
+// wish still shows up immediately.
+const CACHE_TTL_MS = 30_000;
+let cached: { at: number; payload: { wishes: Wish[]; count: number; totalReactions: number; storage: string } } | null = null;
+
 export async function GET() {
+  const now = Date.now();
+  if (cached && now - cached.at < CACHE_TTL_MS) {
+    return NextResponse.json(cached.payload);
+  }
   const { wishes, totalReactions } = await listWishes();
-  return NextResponse.json({ wishes, count: wishes.length, totalReactions });
+  // `storage` is a first-hand health signal: "redis" proves wishes are
+  // shared through Upstash; "memory" means the env vars are missing and
+  // each server instance only remembers its own wishes.
+  const payload = { wishes, count: wishes.length, totalReactions, storage: usingRedis() ? 'redis' : 'memory' };
+  cached = { at: now, payload };
+  return NextResponse.json(payload);
 }
 
 function clientIp(req: NextRequest): string {
@@ -89,5 +106,6 @@ export async function POST(req: NextRequest) {
   };
 
   await addWish(wish);
+  cached = null; // A fresh wish must be visible on the next read.
   return NextResponse.json({ wish }, { status: 201 });
 }

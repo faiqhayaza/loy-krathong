@@ -24,8 +24,12 @@ let redisTried = false;
 function getRedis(): Redis | null {
   if (redisTried) return redis;
   redisTried = true;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  // Primary names (Upstash dashboard default). The store this project
+  // reuses — the team's free `faiq-personal` — was connected with the KV
+  // prefix, so its variables are KV_REST_API_URL / KV_REST_API_TOKEN.
+  // Either pair works; same store, same `loy:*` keys.
+  const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
   if (url && token) {
     try {
       redis = new Redis({ url, token });
