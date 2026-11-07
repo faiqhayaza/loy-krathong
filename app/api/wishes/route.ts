@@ -14,7 +14,7 @@ import {
   type Lang,
   type Wish,
 } from '@/lib/data';
-import { addFloater, addWish, checkDailyLimit, checkRateLimit, invalidateWishesCache, listWishesCached, recordServerEvent } from '@/lib/store';
+import { addFloater, addWish, checkDailyLimit, checkRateLimit, clearDailyLimit, deleteWish, invalidateWishesCache, listStoredWishesRaw, listWishesCached, recordServerEvent } from '@/lib/store';
 import { bangkokDay } from '@/lib/bangkok';
 import { isValidRecoveryId } from '@/lib/identity';
 
@@ -145,4 +145,43 @@ export async function POST(req: NextRequest) {
   const { visitorId: _v, ...publicWish } = wish;
   void _v;
   return NextResponse.json({ wish: publicWish }, { status: 201 });
+}
+
+// DELETE — remove your own floated krathong (fix round, 2026-11-07).
+//
+// The visitor's recovery ID (the `x-visitor-id` header, the same bearer <redacted>
+// the float used) is the only credential: the wish is found in the
+// server-internal list (which carries visitorId — the public list strips
+// it), and the delete only runs when the wish's visitorId matches the
+// header exactly. A wish floated without an ID has no owner and can
+// never be removed this way. On success the river cache is cleared and
+// today's daily slot is released, so the owner can float again the
+// same day; the client also forgets its ledger entry and reopens the
+// float form. The id arrives as a query parameter (?id=...).
+export async function DELETE(req: NextRequest) {
+  const visitorId = req.headers.get('x-visitor-id');
+  if (!visitorId || !isValidRecoveryId(visitorId)) {
+    return NextResponse.json({ error: 'identity_required' }, { status: 401 });
+  }
+  const id = req.nextUrl.searchParams.get('id') ?? '';
+  if (!id) {
+    return NextResponse.json({ error: 'id_required' }, { status: 400 });
+  }
+  const stored = await listStoredWishesRaw();
+  const wish = stored.find((w) => w.id === id);
+  if (!wish) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+  if (wish.visitorId !== visitorId) {
+    return NextResponse.json({ error: 'not_owner' }, { status: 403 });
+  }
+  const removed = await deleteWish(id);
+  if (!removed) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+  invalidateWishesCache();
+  // The owner floated today and just took it back: release today's
+  // slot so they can float again. The 5/min rate limit still applies.
+  await clearDailyLimit(clientIp(req), bangkokDay());
+  return NextResponse.json({ ok: true });
 }

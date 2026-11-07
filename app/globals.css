@@ -254,16 +254,18 @@ button, input, textarea { font: inherit; color: inherit; }
 .river-wrap {
   position: relative; overflow: hidden; background: #0a1030;
   width: 100vw; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
-  height: clamp(560px, 72vh, 720px);
+  height: clamp(600px, 80vh, 840px);
 }
 .river-wrap canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 /* The river scene (design variant A, photo-forward): four layers,
    bottom to top. (1) The night-graded Chao Phraya photograph, an <img>
    cover-fit to the panel — object-position 50% keeps the temple (at
    50% of the photo width) centred in the frame at desktop and mobile;
-   the panel is taller (relative) than the photo at every viewport the
-   site serves, so the photo's height always maps to the panel height
-   and its waterline stays at 67% of the panel. (2) The WebGL water
+   the panel is wider (relative) than the 16:9 photo, so the width
+   constrains and the photo is cropped top and bottom — object-position
+   50% 40% shifts the crop window up so Wat Arun's spire tip (19.7%
+   of the photo height) stays in frame at every viewport the site
+   serves, with the waterline near the lower third. (2) The WebGL water
    canvas: the shader paints only below the waterline, at partial
    opacity, over the photograph's water. (3) The main canvas, absolutely
    sized to the scene (see the note below) so the wrap's clamp height
@@ -275,7 +277,7 @@ button, input, textarea { font: inherit; color: inherit; }
 .river-scene { position: absolute; inset: 0; }
 .river-scene .river-backdrop {
   position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0;
-  object-fit: cover; object-position: 50% center; pointer-events: none;
+  object-fit: cover; object-position: 50% 40%; pointer-events: none;
   user-select: none;
 }
 .river-scene canvas.river-water {
@@ -381,19 +383,21 @@ button, input, textarea { font: inherit; color: inherit; }
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold-soft);
   margin: 0;
 }
-/* The preview is the only sticky thing in the form: a small card
-   (~260px) that stays at the top of the viewport while the visitor
-   scrolls the fields, so they always see what they are building.
-   The whole form is NEVER sticky (that caused the 173,964 px²
-   overlap in round 1 — a sticky element taller than the viewport
-   cannot share its column). Static on mobile, where it would eat
-   the screen. */
+/* The preview sits in normal flow at the top of the form — it is NOT
+   sticky. It used to be `position: sticky; top: 84px` on desktop, but
+   the preview is a direct child of the same scrolling column as the
+   fields it previews, so while the visitor scrolled the form the
+   preview stuck at the viewport top and the flower labels scrolled
+   underneath it, covering half the first row (live defect,
+   2026-11-07) and lingering over the My Krathong section. A sticky
+   element inside the column it previews will always cover the content
+   scrolling beneath it; the preview still shows at the top of the form
+   where the visitor starts. */
 .preview {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 12px; background: var(--surface-2); border: 1px solid var(--line-soft);
   border-radius: var(--radius-md); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
 }
-@media (min-width: 960px) { .preview { position: sticky; top: 84px; z-index: 2; } }
 .preview .preview-tag { font-size: 13px; color: var(--gold-soft); font-weight: 600; min-height: 20px; }
 .field { display: flex; flex-direction: column; gap: 5px; }
 .field label { font-weight: 600; font-size: 14px; color: var(--cream); }

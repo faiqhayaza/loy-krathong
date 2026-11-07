@@ -36,7 +36,7 @@ import { bangkokDay } from '@/lib/bangkok';
 import { candleFlameToday } from '@/lib/candle';
 import { replyLanguage, templateBlessing } from '@/lib/blessing';
 import { CRISIS_MESSAGE, isCrisis } from '@/lib/crisis';
-import { getVisitorId } from '@/lib/identity';
+import { getIdentity, getVisitorId } from '@/lib/identity';
 import { recordEvent } from '@/lib/events';
 import { t } from '@/lib/i18n';
 import { loadKrathongChoice, saveKrathongChoice } from '@/lib/krathong';
@@ -131,6 +131,39 @@ export default function Builder({ lang, onFloated }: Props) {
     };
     window.addEventListener('loy:krathong-changed', reload);
     return () => window.removeEventListener('loy:krathong-changed', reload);
+  }, []);
+
+  // Pre-fill the name from the nickname the visitor entered at sign-up
+  // (the identity gate stores it on this device) — editable, never
+  // locked: the visitor can change it before floating. Client-only
+  // (useEffect runs after mount), so the server render stays empty and
+  // there is no hydration mismatch. A name already typed wins.
+  useEffect(() => {
+    setName((current) => {
+      if (current.trim() !== '') return current;
+      return getIdentity()?.nickname ?? '';
+    });
+  }, []);
+
+  // When the visitor removes their own krathong (from My Krathong),
+  // reopen the float form: clear the floated-day marker and reset the
+  // floated state, so they can float again the same day (the server
+  // released today's daily slot as part of the delete).
+  useEffect(() => {
+    const onRemoved = () => {
+      setFloated(null);
+      setFloatedToday(false);
+      setBlessing('');
+      setCrisis(false);
+      setKeepsakeDone(false);
+      try {
+        localStorage.removeItem(FLOATED_DAY_KEY);
+      } catch {
+        // private mode: the state reset still shows the form
+      }
+    };
+    window.addEventListener('loy:wish-removed', onRemoved);
+    return () => window.removeEventListener('loy:wish-removed', onRemoved);
   }, []);
 
   const blocked = containsBlocked(wish) || containsBlocked(name);

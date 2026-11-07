@@ -448,6 +448,26 @@ export async function checkDailyLimit(ip: string, day: string): Promise<boolean>
   return true;
 }
 
+/**
+ * Release today's daily slot for an IP. Called only after an
+ * owner-checked DELETE removes the visitor's own krathong, so they can
+ * float again the same day. Redis: DEL the key; in-memory fallback:
+ * drop the entry. The 5/min rate limit still applies to the re-float.
+ */
+export async function clearDailyLimit(ip: string, day: string): Promise<void> {
+  const key = DAILY_KEY(ip, day);
+  const client = getRedis();
+  if (client) {
+    try {
+      await client.del(key);
+      return;
+    } catch (err) {
+      console.error('[loy] Redis daily-limit clear failed, using memory:', err);
+    }
+  }
+  memDaily.delete(key);
+}
+
 // ---- Server event log (D1) -------------------------------------------------
 
 /**

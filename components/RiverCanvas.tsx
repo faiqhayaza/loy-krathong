@@ -1057,6 +1057,12 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // Clouds dim stars and moon; a heavy overcast veils them almost
       // fully — the moon stays faintly visible, never bright.
       const dim = (1 - 0.6 * (wthr.cloudShown / 100)) * (1 - 0.85 * overcast);
+      // The moon's path on the water dims WITH the moon but far more
+      // gently: the disc can veil to near-invisible (dim ~0.08 at
+      // ?cloud=97) while its reflection stays readable — a ~40% cut at
+      // full cover, never the disc's ~92%. Using `dim` here made the
+      // column vanish under cloud (live defect, 2026-11-07).
+      const colDim = 0.6 + 0.4 * dim;
 
       // sky — the photograph IS the sky now (night-graded indigo with
       // the lit temple), so nothing is painted here: stars, moon,
@@ -1333,33 +1339,35 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // the photograph's own glitter path, which it reinforces: a
       // wide soft glow, then dashes that break and reform down the
       // full depth of the water, each with its own phase and a
-      // sideways wobble. Overcast-robust (fix1 v2): the live state in
-      // Bangkok is the veiled one, so the column keeps most of its
-      // strength under cloud (a quarter cut, not half or more) — the
-      // moon disc in the sky still veils, but its path on the water
-      // stays readable, the brightest thing there.
+      // sideways wobble. Overcast-robust: the column dims with the
+      // moon through `colDim` (a ~40% cut at full cover, not the
+      // disc's ~92%) — the moon disc in the sky still veils, but its
+      // path on the water stays readable, the brightest thing there.
+      // The core is bright enough (0.30) to read as one smooth column
+      // over the photograph's ripples and the temple's light streaks;
+      // at 0.16 it was drowned out (live defect, 2026-11-07).
       const moonX = w * MOON_X;
       const coreBand = ctx!.createLinearGradient(moonX - 45, 0, moonX + 45, 0);
       coreBand.addColorStop(0, 'rgba(246, 211, 107, 0)');
-      coreBand.addColorStop(0.5, `rgba(246, 211, 107, ${(0.16 * dim).toFixed(3)})`);
+      coreBand.addColorStop(0.5, `rgba(246, 211, 107, ${(0.3 * colDim).toFixed(3)})`);
       coreBand.addColorStop(1, 'rgba(246, 211, 107, 0)');
       ctx!.fillStyle = coreBand;
       ctx!.fillRect(moonX - 45, skyH, 90, h - skyH);
       const glowCol = ctx!.createLinearGradient(moonX - 130, 0, moonX + 130, 0);
       glowCol.addColorStop(0, 'rgba(246, 211, 107, 0)');
-      glowCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.1 * dim).toFixed(3)})`);
+      glowCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.18 * colDim).toFixed(3)})`);
       glowCol.addColorStop(1, 'rgba(246, 211, 107, 0)');
       ctx!.fillStyle = glowCol;
       ctx!.fillRect(moonX - 130, skyH, 260, h - skyH);
       const washCol = ctx!.createLinearGradient(moonX - 240, 0, moonX + 240, 0);
       washCol.addColorStop(0, 'rgba(246, 211, 107, 0)');
-      washCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.03 * dim).toFixed(3)})`);
+      washCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.07 * colDim).toFixed(3)})`);
       washCol.addColorStop(1, 'rgba(246, 211, 107, 0)');
       ctx!.fillStyle = washCol;
       ctx!.fillRect(moonX - 240, skyH, 480, h - skyH);
       for (const sh of shimmers) {
         const tw = 0.35 + 0.65 * Math.abs(Math.sin((t / 1000) * sh.speed + sh.phase));
-        const a = (0.05 + 0.09 * tw) * dim;
+        const a = (0.08 + 0.12 * tw) * colDim;
         const wx = sh.x + Math.sin((t / 1300) * sh.speed + sh.phase) * 7;
         ctx!.strokeStyle = sh.cool
           ? `rgba(205, 214, 248, ${a.toFixed(3)})`

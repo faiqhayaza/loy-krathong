@@ -16,9 +16,11 @@
 // wishes floated from this device under this identity. Each entry
 // shows its krathong, date, `floatedOn` place, reactions received
 // (chips), and received blessing lanterns (B2 — none can arrive yet,
-// so the count is 0 with a note). A Delete button is shown but
-// disabled: owner-delete is D2's route, which does not exist yet, and
-// a local-only delete would lie (the wish would stay on the river).
+// so the count is 0 with a note). A Delete button removes the
+// visitor's OWN krathong only: it calls DELETE /api/wishes with the
+// recovery ID (two taps — arm, then confirm), the server 403s any
+// wish that is not theirs, and on success the ledger entry is
+// forgotten and the builder reopens so they can float again.
 //
 // Wishes hidden or under review (F2/E5 status) have no field to read
 // yet — the list shows every ledger wish that is still on the river.
@@ -46,7 +48,7 @@ import { DESTINATIONS } from '@/lib/destinations';
 import { shortDate, t } from '@/lib/i18n';
 import { getIdentity } from '@/lib/identity';
 import { loadKrathongChoice, saveKrathongChoice, type KrathongChoice } from '@/lib/krathong';
-import { loadMyWishes } from '@/lib/myWishes';
+import { forgetMyWish, loadMyWishes } from '@/lib/myWishes';
 import KrathongSvg from './KrathongSvg';
 
 interface Props {
@@ -63,7 +65,14 @@ export default function MyKrathong({ lang, wishes }: Props) {
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [deleteNote, setDeleteNote] = useState(false);
+  // Remove-your-own-krathong (fix round, 2026-11-07): the Delete button
+  // arms on first tap (a confirm step — there is no undo), then calls
+  // DELETE /api/wishes with the recovery ID. Only the owner's own wish
+  // can be removed; the server 403s anything else.
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [removed, setRemoved] = useState(false);
+  const [removeError, setRemoveError] = useState(false);
 
   // The builder auto-saves the same key: when it changes under us,
   // reload the draft — unless the visitor is mid-edit here, in which
@@ -119,12 +128,51 @@ export default function MyKrathong({ lang, wishes }: Props) {
     }
   }
 
+  async function removeWish(id: string) {
+    const visitorId = identity?.id;
+    if (!visitorId || removingId) return;
+    setRemovingId(id);
+    setRemoveError(false);
+    try {
+      const res = await fetch(`/api/wishes?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { 'x-visitor-id': visitorId },
+      });
+      if (!res.ok) {
+        setRemoveError(true);
+        setConfirmId(null);
+        return;
+      }
+      // The river is clear: forget the device ledger entry and tell
+      // the builder to reopen the float form (it clears its own
+      // floated-day marker and resets its state). `mine` re-derives on
+      // the re-render below, so the wish leaves this list at once; the
+      // river and wall follow on the page's next poll.
+      forgetMyWish(id);
+      setConfirmId(null);
+      setRemoved(true);
+      window.dispatchEvent(new CustomEvent('loy:wish-removed', { detail: { id } }));
+    } catch {
+      setRemoveError(true);
+      setConfirmId(null);
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
   // --- my wishes ---
   const ledger = loadMyWishes();
   const byId = new Map(wishes.map((w) => [w.id, w]));
   const mine = ledger
     .map((entry) => ({ entry, wish: byId.get(entry.id) }))
     .filter((row): row is { entry: (typeof ledger)[number]; wish: Wish } => row.wish != null);
+
+  // The "removed" status belongs to the wish just taken down: once a
+  // new wish is on the list it no longer applies.
+  const mineCount = mine.length;
+  useEffect(() => {
+    if (mineCount > 0) setRemoved(false);
+  }, [mineCount]);
 
   return (
     <div className="my-krathong">
@@ -268,19 +316,26 @@ export default function MyKrathong({ lang, wishes }: Props) {
                 <button
                   type="button"
                   className="btn small ghost"
-                  onClick={() => setDeleteNote(true)}
-                  aria-describedby="delete-soon"
+                  onClick={() =>
+                    confirmId === entry.id ? void removeWish(entry.id) : setConfirmId(entry.id)
+                  }
+                  disabled={removingId === entry.id}
                 >
-                  {s.deleteWish}
+                  {confirmId === entry.id ? s.deleteConfirm : s.deleteWish}
                 </button>
               </li>
             );
           })}
         </ul>
       )}
-      {deleteNote && (
-        <p className="hint" id="delete-soon" role="status">
-          {s.deleteWishSoon}
+      {removed && (
+        <p className="hint" role="status">
+          {s.deleteRemoved}
+        </p>
+      )}
+      {removeError && (
+        <p className="hint" role="status">
+          {s.deleteError}
         </p>
       )}
     </div>
