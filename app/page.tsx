@@ -505,7 +505,7 @@ export default function Page() {
   }
 
   return (
-    <div className="page">
+    <>
       <header className="topbar">
         <a className="brand" href="#top">
           <span className="brand-mark" aria-hidden="true">🪷</span>
@@ -532,62 +532,64 @@ export default function Page() {
           </span>
         </nav>
       </header>
+      <div className="page page-head">
 
-      {/* Phase banner — the original site's renderBanner: before the
-          festival it counts down to the opening (18 November); in the
-          archive and closed phases it says so plainly. The hero keeps
-          counting to the full moon. */}
-      {cal.phase === 'before' && (
-        <div className="phase-banner" role="status">
-          <strong>🌙 {s.phaseBeforeTitle}</strong>
-          <span>{s.phaseCountdown(opening.days, opening.hours)}</span>
-        </div>
-      )}
-      {cal.phase === 'opening' && (
-        <div className="phase-banner" role="status">
-          <strong>{s.phaseOpeningTitle}</strong>
-          <span>{s.phaseOpeningBody}</span>
-        </div>
-      )}
-      {cal.phase === 'archive' && (
-        <div className="phase-banner" role="status">
-          <strong>{s.phaseArchiveTitle}</strong>
-          <span>{s.phaseArchiveBody}</span>
-        </div>
-      )}
-      {cal.phase === 'closed' && (
-        <div className="phase-banner" role="status">
-          <strong>{s.phaseClosedTitle}</strong>
-        </div>
-      )}
+        {/* Phase banner — the original site's renderBanner: before the
+            festival it counts down to the opening (18 November); in the
+            archive and closed phases it says so plainly. The hero keeps
+            counting to the full moon. */}
+        {cal.phase === 'before' && (
+          <div className="phase-banner" role="status">
+            <strong>🌙 {s.phaseBeforeTitle}</strong>
+            <span>{s.phaseCountdown(opening.days, opening.hours)}</span>
+          </div>
+        )}
+        {cal.phase === 'opening' && (
+          <div className="phase-banner" role="status">
+            <strong>{s.phaseOpeningTitle}</strong>
+            <span>{s.phaseOpeningBody}</span>
+          </div>
+        )}
+        {cal.phase === 'archive' && (
+          <div className="phase-banner" role="status">
+            <strong>{s.phaseArchiveTitle}</strong>
+            <span>{s.phaseArchiveBody}</span>
+          </div>
+        )}
+        {cal.phase === 'closed' && (
+          <div className="phase-banner" role="status">
+            <strong>{s.phaseClosedTitle}</strong>
+          </div>
+        )}
 
-      {/* E1: the river could not be reached — keep showing the last
-          update; the state hook retries on its own. */}
-      {fest.status === 'down' && (
-        <div className="phase-banner" role="status">
-          <strong>⚠️ {s.serverDown}</strong>
-          <span>{s.serverDownBody}</span>
-        </div>
-      )}
-      {/* E3: the organisers set a pretend date for everyone. */}
-      {fest.payload?.config.simDay && (
-        <div className="phase-banner" role="status">
-          <strong>🔍 Preview</strong>
-          <span>{s.previewingAll(shortDate(fest.payload.config.simDay, lang))}</span>
-        </div>
-      )}
-      {/* E4: rewards paused / celebration running, set by the organisers. */}
-      {fest.payload?.config.paused && (
-        <div className="phase-banner" role="status">
-          <strong>⏸️ {s.pausedNote}</strong>
-        </div>
-      )}
-      {fest.celebrating && (
-        <div className="phase-banner" role="status">
-          <strong>🎆 {s.celebration}</strong>
-        </div>
-      )}
+        {/* E1: the river could not be reached — keep showing the last
+            update; the state hook retries on its own. */}
+        {fest.status === 'down' && (
+          <div className="phase-banner" role="status">
+            <strong>⚠️ {s.serverDown}</strong>
+            <span>{s.serverDownBody}</span>
+          </div>
+        )}
+        {/* E3: the organisers set a pretend date for everyone. */}
+        {fest.payload?.config.simDay && (
+          <div className="phase-banner" role="status">
+            <strong>🔍 Preview</strong>
+            <span>{s.previewingAll(shortDate(fest.payload.config.simDay, lang))}</span>
+          </div>
+        )}
+        {/* E4: rewards paused / celebration running, set by the organisers. */}
+        {fest.payload?.config.paused && (
+          <div className="phase-banner" role="status">
+            <strong>⏸️ {s.pausedNote}</strong>
+          </div>
+        )}
+        {fest.celebrating && (
+          <div className="phase-banner" role="status">
+            <strong>🎆 {s.celebration}</strong>
+          </div>
+        )}
 
+      </div>
       {/* Hero */}
       <section className="hero" id="top">
         <SkyCanvas />
@@ -624,7 +626,6 @@ export default function Page() {
           </div>
         </div>
       </section>
-
       {/* The river — full-width, directly under the hero: it is the
           heart of the night. The float form sits below it, and the
           floated krathong — with its keepsake, copy and delete — stays
@@ -741,189 +742,190 @@ export default function Page() {
           </div>
         )}
       </section>
-
-      {/* Float — below the river (Designer C): the builder on the left,
-          tonight's missions and the milestone card in a rail on the
-          right. The section owns the title and intro; the form itself
-          starts with the stamps and the preview. */}
-      <section className="float-section reveal" id="float" aria-labelledby="float-title">
-        <p className="kicker">Float a krathong</p>
-        <div className="section-head">
-          <h2 id="float-title">{s.builderTitle}</h2>
-        </div>
-        <p className="section-intro">{s.builderIntro}</p>
-        <div className="float-grid">
-          <Builder lang={lang} onFloated={handleFloated} />
-          <div className="float-rail">
-            {/* Chunk A side panel: tonight's missions + the milestone card. */}
-            <MissionsPanel lang={lang} cal={cal} />
-            <MilestoneCard lang={lang} cal={cal} day={milestoneDay} />
+      <div className="page">
+        {/* Float — below the river (Designer C): the builder on the left,
+            tonight's missions and the milestone card in a rail on the
+            right. The section owns the title and intro; the form itself
+            starts with the stamps and the preview. */}
+        <section className="float-section reveal" id="float" aria-labelledby="float-title">
+          <p className="kicker">Float a krathong</p>
+          <div className="section-head">
+            <h2 id="float-title">{s.builderTitle}</h2>
           </div>
-        </div>
-      </section>
+          <p className="section-intro">{s.builderIntro}</p>
+          <div className="float-grid">
+            <Builder lang={lang} onFloated={handleFloated} />
+            <div className="float-rail">
+              {/* Chunk A side panel: tonight's missions + the milestone card. */}
+              <MissionsPanel lang={lang} cal={cal} />
+              <MilestoneCard lang={lang} cal={cal} day={milestoneDay} />
+            </div>
+          </div>
+        </section>
 
-      {/* Seven destinations */}
-      <section className="section reveal" id="destinations" aria-labelledby="dest-title">
-        <p className="kicker">Seven nights · Seven rivers</p>
-        <div className="section-head">
-          <h2 id="dest-title">{s.destinationsTitle}</h2>
-          <span className="hint">
-            {lang === 'th'
-              ? `${stamps.length} จาก 7 ตรา`
-              : `${stamps.length} of 7 stamps`}
+        {/* Seven destinations */}
+        <section className="section reveal" id="destinations" aria-labelledby="dest-title">
+          <p className="kicker">Seven nights · Seven rivers</p>
+          <div className="section-head">
+            <h2 id="dest-title">{s.destinationsTitle}</h2>
+            <span className="hint">
+              {lang === 'th'
+                ? `${stamps.length} จาก 7 ตรา`
+                : `${stamps.length} of 7 stamps`}
+            </span>
+          </div>
+          <p className="section-intro">{s.destinationsHint}</p>
+          <div className="dest-strip">
+            {DESTINATIONS.map((d, i) => {
+              const done = stamps.includes(d.id);
+              const visited = visits.includes(d.id);
+              const open = isOpenDay(cal, d.day);
+              const state = done ? 'stamped' : !open ? 'locked' : visited ? 'visited' : 'open';
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  className={`dest ${state}`}
+                  style={{ '--i': i } as React.CSSProperties}
+                  disabled={!open || done}
+                  aria-label={`${d.name[lang]} — ${state === 'stamped' ? s.stamped : state === 'locked' ? s.destOpens(shortDate(cal.dates[d.day - 1], lang)) : state === 'visited' ? s.destVisited : s.destVisit}`}
+                  onClick={() => onDestination(d)}
+                >
+                  <span className="dest-top">
+                    <span className="dest-icon" aria-hidden="true">{STAMP_ICON[d.id]}</span>
+                    <span className="dest-night">{s.destNight(d.day)}</span>
+                  </span>
+                  {done && <span className="dest-stamp">{s.stamped}</span>}
+                  <span className="dest-name">
+                    {d.name[lang]}
+                    <span className="th" lang="th">{d.name.th}</span>
+                  </span>
+                  <span className="dest-river">{d.river[lang]}</span>
+                  <span className="dest-note">{d.theme[lang]}</span>
+                  <span className="dest-cta">
+                    {done ? '✓' : !open ? s.destOpens(shortDate(cal.dates[d.day - 1], lang)) : visited ? s.stampCollect : s.destVisit}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {stamps.length === 7 && <p className="hint" role="status">{s.passportComplete}</p>}
+        </section>
+
+        {/* Hidden secrets (Chunk C1): all seven, with found state. */}
+        <section className="section reveal" aria-labelledby="secrets-title">
+          <p className="kicker">Hidden secrets</p>
+          <div className="section-head">
+            <h2 id="secrets-title">{s.secretsTitle}</h2>
+          </div>
+          <p className="section-intro">{s.secretsIntro}</p>
+          <SecretsPanel
+            key={secretsVersion}
+            lang={lang}
+            cal={cal}
+            onOpen={(slug) => {
+              setSecretSlug(slug);
+              riverRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }}
+          />
+        </section>
+
+        {/* Chunk B — the seven specials, one per night. */}
+        <Specials lang={lang} tick={eventsTick} onOpenDialog={openSpecial} onFloatScroll={scrollToFloat} />
+
+        {/* Missions — all seven nights (chunk A; the Me tab lists these once C4 lands it there). */}
+        <section className="section reveal" id="missions" aria-labelledby="missions-all-title">
+          <p className="kicker">All seven nights</p>
+          <div className="section-head">
+            <h2 id="missions-all-title">{s.missionsAllTitle}</h2>
+          </div>
+          <MissionsAll lang={lang} cal={cal} />
+        </section>
+
+        {/* Wish wall */}
+        <section className="section reveal" id="wishes" aria-labelledby="wall-title">
+          <p className="kicker">Wishes floating</p>
+          <div className="section-head">
+            <h2 id="wall-title">{s.wallTitle}</h2>
+          </div>
+          <WishWall
+            wishes={wishes}
+            lang={lang}
+            loading={loading}
+            myWishId={myWishId}
+            reacted={reacted}
+            onReact={toggleReaction}
+            onReacted={updateWishReactions}
+            hiddenIds={hiddenIds}
+            onHide={hideWishOnDevice}
+            onUnhide={unhideWishOnDevice}
+            onBless={(wishId) => {
+              setBlessTarget(wishId);
+              setSpecialDialog('bless');
+            }}
+          />
+        </section>
+
+        {/* Chunk B — the special dialogs and the finale scene. */}
+        {specialDialog === 'quiz' && (
+          <QuizDialog lang={lang} onClose={() => { setSpecialDialog(null); setEventsTick((n) => n + 1); }} />
+        )}
+        {specialDialog === 'bless' && (
+          <BlessDialog
+            lang={lang}
+            wishes={wishes}
+            myWishId={myWishId}
+            targetId={blessTarget}
+            onClose={() => { setSpecialDialog(null); setBlessTarget(null); setEventsTick((n) => n + 1); }}
+            onSent={() => void refreshWishesAfterBlessing()}
+          />
+        )}
+        {specialDialog === 'gratitude' && (
+          <GratitudeDialog lang={lang} onClose={() => { setSpecialDialog(null); setEventsTick((n) => n + 1); }} />
+        )}
+        {specialDialog === 'candle' && (
+          <CandleDialog lang={lang} onClose={() => { setSpecialDialog(null); setEventsTick((n) => n + 1); }} />
+        )}
+        {finaleActive && (
+          <FinaleOverlay lang={lang} flower={finaleFlower} onClose={() => setFinaleActive(false)} />
+        )}
+
+        {/* Closing footer — the page used to end abruptly after the wish
+            wall. No privacy text here (that block stays removed); just a
+            proper ending. */}
+        <footer className="site-footer">
+          <span>
+            <span aria-hidden="true">🪷 </span>
+            {s.festivalName}
           </span>
-        </div>
-        <p className="section-intro">{s.destinationsHint}</p>
-        <div className="dest-strip">
-          {DESTINATIONS.map((d, i) => {
-            const done = stamps.includes(d.id);
-            const visited = visits.includes(d.id);
-            const open = isOpenDay(cal, d.day);
-            const state = done ? 'stamped' : !open ? 'locked' : visited ? 'visited' : 'open';
-            return (
-              <button
-                key={d.id}
-                type="button"
-                className={`dest ${state}`}
-                style={{ '--i': i } as React.CSSProperties}
-                disabled={!open || done}
-                aria-label={`${d.name[lang]} — ${state === 'stamped' ? s.stamped : state === 'locked' ? s.destOpens(shortDate(cal.dates[d.day - 1], lang)) : state === 'visited' ? s.destVisited : s.destVisit}`}
-                onClick={() => onDestination(d)}
-              >
-                <span className="dest-top">
-                  <span className="dest-icon" aria-hidden="true">{STAMP_ICON[d.id]}</span>
-                  <span className="dest-night">{s.destNight(d.day)}</span>
-                </span>
-                {done && <span className="dest-stamp">{s.stamped}</span>}
-                <span className="dest-name">
-                  {d.name[lang]}
-                  <span className="th" lang="th">{d.name.th}</span>
-                </span>
-                <span className="dest-river">{d.river[lang]}</span>
-                <span className="dest-note">{d.theme[lang]}</span>
-                <span className="dest-cta">
-                  {done ? '✓' : !open ? s.destOpens(shortDate(cal.dates[d.day - 1], lang)) : visited ? s.stampCollect : s.destVisit}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {stamps.length === 7 && <p className="hint" role="status">{s.passportComplete}</p>}
-      </section>
+          <span>{s.festivalDate}</span>
+        </footer>
 
-      {/* Hidden secrets (Chunk C1): all seven, with found state. */}
-      <section className="section reveal" aria-labelledby="secrets-title">
-        <p className="kicker">Hidden secrets</p>
-        <div className="section-head">
-          <h2 id="secrets-title">{s.secretsTitle}</h2>
-        </div>
-        <p className="section-intro">{s.secretsIntro}</p>
-        <SecretsPanel
-          key={secretsVersion}
-          lang={lang}
-          cal={cal}
-          onOpen={(slug) => {
-            setSecretSlug(slug);
-            riverRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }}
-        />
-      </section>
-
-      {/* Chunk B — the seven specials, one per night. */}
-      <Specials lang={lang} tick={eventsTick} onOpenDialog={openSpecial} onFloatScroll={scrollToFloat} />
-
-      {/* Missions — all seven nights (chunk A; the Me tab lists these once C4 lands it there). */}
-      <section className="section reveal" id="missions" aria-labelledby="missions-all-title">
-        <p className="kicker">All seven nights</p>
-        <div className="section-head">
-          <h2 id="missions-all-title">{s.missionsAllTitle}</h2>
-        </div>
-        <MissionsAll lang={lang} cal={cal} />
-      </section>
-
-      {/* Wish wall */}
-      <section className="section reveal" id="wishes" aria-labelledby="wall-title">
-        <p className="kicker">Wishes floating</p>
-        <div className="section-head">
-          <h2 id="wall-title">{s.wallTitle}</h2>
-        </div>
-        <WishWall
-          wishes={wishes}
-          lang={lang}
-          loading={loading}
-          myWishId={myWishId}
-          reacted={reacted}
-          onReact={toggleReaction}
-          onReacted={updateWishReactions}
-          hiddenIds={hiddenIds}
-          onHide={hideWishOnDevice}
-          onUnhide={unhideWishOnDevice}
-          onBless={(wishId) => {
-            setBlessTarget(wishId);
-            setSpecialDialog('bless');
-          }}
-        />
-      </section>
-
-      {/* Chunk B — the special dialogs and the finale scene. */}
-      {specialDialog === 'quiz' && (
-        <QuizDialog lang={lang} onClose={() => { setSpecialDialog(null); setEventsTick((n) => n + 1); }} />
-      )}
-      {specialDialog === 'bless' && (
-        <BlessDialog
-          lang={lang}
-          wishes={wishes}
-          myWishId={myWishId}
-          targetId={blessTarget}
-          onClose={() => { setSpecialDialog(null); setBlessTarget(null); setEventsTick((n) => n + 1); }}
-          onSent={() => void refreshWishesAfterBlessing()}
-        />
-      )}
-      {specialDialog === 'gratitude' && (
-        <GratitudeDialog lang={lang} onClose={() => { setSpecialDialog(null); setEventsTick((n) => n + 1); }} />
-      )}
-      {specialDialog === 'candle' && (
-        <CandleDialog lang={lang} onClose={() => { setSpecialDialog(null); setEventsTick((n) => n + 1); }} />
-      )}
-      {finaleActive && (
-        <FinaleOverlay lang={lang} flower={finaleFlower} onClose={() => setFinaleActive(false)} />
-      )}
-
-      {/* Closing footer — the page used to end abruptly after the wish
-          wall. No privacy text here (that block stays removed); just a
-          proper ending. */}
-      <footer className="site-footer">
-        <span>
-          <span aria-hidden="true">🪷 </span>
-          {s.festivalName}
-        </span>
-        <span>{s.festivalDate}</span>
-      </footer>
-
-      {/* Chunk C dialogs */}
-      {secretSlug &&
-        (() => {
-          const dest = DESTINATIONS.find((d) => d.id === secretSlug);
-          return dest ? (
-            <SecretDialog
-              lang={lang}
-              destination={dest}
-              onClose={() => setSecretSlug(null)}
-              onFound={() => setSecretsVersion((v) => v + 1)}
-            />
-          ) : null;
-        })()}
-      {showWelcome && (
-        <WelcomeDialog
-          lang={lang}
-          destination={riverDest}
-          onLangChange={switchLang}
-          onClose={() => setShowWelcome(false)}
-        />
-      )}
-      {showJourney && (
-        <JourneyCard lang={lang} cal={cal} journey={journeyFor(cal)} onClose={() => setShowJourney(false)} />
-      )}
-    </div>
+        {/* Chunk C dialogs */}
+        {secretSlug &&
+          (() => {
+            const dest = DESTINATIONS.find((d) => d.id === secretSlug);
+            return dest ? (
+              <SecretDialog
+                lang={lang}
+                destination={dest}
+                onClose={() => setSecretSlug(null)}
+                onFound={() => setSecretsVersion((v) => v + 1)}
+              />
+            ) : null;
+          })()}
+        {showWelcome && (
+          <WelcomeDialog
+            lang={lang}
+            destination={riverDest}
+            onLangChange={switchLang}
+            onClose={() => setShowWelcome(false)}
+          />
+        )}
+        {showJourney && (
+          <JourneyCard lang={lang} cal={cal} journey={journeyFor(cal)} onClose={() => setShowJourney(false)} />
+        )}
+      </div>
+    </>
   );
 }

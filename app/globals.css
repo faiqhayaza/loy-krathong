@@ -41,6 +41,17 @@
 }
 
 * { box-sizing: border-box; }
+/* Horizontal overflow (live defect, 2026-11-08): .hero and
+   .river-wrap used to break out of .page with width: 100vw, and
+   100vw includes the classic vertical scrollbar's width — on a
+   real desktop browser the layout viewport is ~15px narrower than
+   100vw, so they stuck out ~15px and the page gained a horizontal
+   scrollbar. Root clipping did not fix it (clip and hidden both
+   left scrollWidth 1912 > 1904; hidden on body contained it but
+   broke the sticky topbar), and 100svw equals 100vw on desktop
+   Chrome. So the two sections are now direct children of <body>
+   (siblings of .page) and span the layout viewport by structure
+   — no vw, no clipping, sticky untouched. */
 html { scroll-behavior: smooth; }
 body {
   margin: 0;
@@ -59,6 +70,7 @@ button, input, textarea { font: inherit; color: inherit; }
 
 .page { max-width: 1180px; margin: 0 auto; padding: 0 16px 64px; }
 @media (min-width: 960px) { .page { padding: 0 24px 80px; } }
+.page-head { padding-bottom: 0; }
 
 /* Phase banner — the original site's renderBanner, in the night
    palette: before the festival it counts down to the opening; in the
@@ -87,11 +99,11 @@ button, input, textarea { font: inherit; color: inherit; }
 .topbar {
   position: sticky; top: 0; z-index: 40;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 12px 16px 10px; margin: 0 -16px; flex-wrap: wrap;
+  max-width: 1180px; margin: 0 auto; padding: 12px 16px 10px; flex-wrap: wrap;
   background: rgba(7, 10, 31, 0.85); backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line-soft);
 }
-@media (min-width: 960px) { .topbar { margin: 0 -24px; padding-left: 24px; padding-right: 24px; } }
+@media (min-width: 960px) { .topbar { padding-left: 24px; padding-right: 24px; } }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--cream); }
 .brand-mark { font-size: 30px; line-height: 1; }
 .brand-name { font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: 0.02em; }
@@ -135,10 +147,11 @@ button, input, textarea { font: inherit; color: inherit; }
 /* Hero — full-bleed sky (Designer C): no box, no border, no radius.
    The hero IS the river's sky — it runs edge to edge and the river
    follows directly below it, so the night is one continuous scene.
-   The breakout escapes the centred .page container. */
+   It is a direct child of <body>, so it spans the layout viewport
+   by structure (no 100vw breakout — 100vw includes the classic
+   scrollbar's width and overflowed the page). */
 .hero {
   position: relative; overflow: hidden;
-  width: 100vw; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
 }
 .hero canvas { display: block; width: 100%; height: 560px; }
 @media (min-width: 960px) { .hero canvas { height: 640px; } }
@@ -248,12 +261,12 @@ button, input, textarea { font: inherit; color: inherit; }
    flows into it with no seam. */
 .river-section { margin-top: 0; scroll-margin-top: 84px; }
 @media (max-width: 960px) { .river-section { scroll-margin-top: 120px; } }
-.river-head { padding: 28px 0 18px; }
+.river-head { max-width: 1180px; margin: 0 auto; padding: 28px 16px 18px; }
+@media (min-width: 960px) { .river-head { padding-left: 24px; padding-right: 24px; } }
 .river-head .section-head { margin-bottom: 4px; }
 .river-head .section-intro { margin-bottom: 0; }
 .river-wrap {
   position: relative; overflow: hidden; background: #0a1030;
-  width: 100vw; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
   height: clamp(600px, 80vh, 840px);
 }
 .river-wrap canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
