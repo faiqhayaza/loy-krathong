@@ -8,7 +8,7 @@
 // globals.css) is positioned so y = 200 lands exactly on the canvas
 // horizon (28% of the canvas height) and the temple centre lands at
 // 30% of the river width — the same spot the canvas temple stood, so the
-// swifts still fly to it and the fireworks still rise above it.
+// fireworks still rise above it.
 //
 // The central prang is drawn from the real thing: a stepped pyramidal
 // base, a long shaft whose outline curves inward as it rises — the concave

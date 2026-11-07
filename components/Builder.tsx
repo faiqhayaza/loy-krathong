@@ -260,7 +260,7 @@ export default function Builder({ lang, onFloated }: Props) {
       <div className="stamps-head">
         <h3>{s.dailyStampsTitle}</h3>
         <span className="stamps-count">
-          {stamps.length} / {MAX_STAMPS}
+          {`${stamps.length} of ${MAX_STAMPS}`}
         </span>
       </div>
       <div className="stamp-row">

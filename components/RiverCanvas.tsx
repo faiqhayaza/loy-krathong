@@ -29,7 +29,7 @@
 // Above it all, the existing canvas life: deep sky with twinkling stars
 // and a full moon at 0.755w (the photograph carries no moon — the drawn
 // moon sits in empty dark sky right of the temple, and the shader's moon
-// band and the drawn moon path sit under it), slow clouds, swifts crossing in loose flocks, the
+// band and the drawn moon path sit under it), slow clouds, the
 // odd falling star, reeds at the far bank, and one floating krathong per
 // wish with its name on a tag above the temple layer. The weather follows
 // the real Bangkok sky (Open-Meteo, refetched every 10 minutes; a gentle
@@ -37,9 +37,9 @@
 // are what Bangkok is doing tonight — under a heavy overcast the clouds
 // close into a deck and the moon and stars fade to a faint glow through
 // it. On Loy Krathong night itself (24 Nov 2026, 19:00-23:59 Bangkok
-// time) fireworks burst above the temple on their own and the swifts fly
-// toward the spire. Five quick clicks anywhere on the canvas launch a
-// short fireworks show — a hidden preview for the night.
+// time) fireworks burst above the temple on their own. Five quick clicks
+// anywhere on the canvas launch a short fireworks show — a hidden preview
+// for the night.
 //
 // One scene, per-night palette: the shader water colours shift subtly
 // with the destination (NIGHT_PALETTES, derived from the original
@@ -49,8 +49,48 @@
 
 import { useEffect, useRef } from 'react';
 import type { Lang, Wish } from '@/lib/data';
-import { boatColors, flameColor, flowerGlyph } from '@/lib/data';
+import { flameColor } from '@/lib/data';
+import {
+  KRATHONG_FLAME_BASE,
+  KRATHONG_FLAME_CENTER,
+  KRATHONG_FLAME_INNER_PATH,
+  KRATHONG_FLAME_PATH,
+  KRATHONG_HULL_CENTER_Y,
+  KRATHONG_VIEWBOX,
+  krathongSvgDocument,
+} from '@/lib/krathongArt';
 import { audio } from '@/lib/audio';
+
+// The river boats are the SAME artwork as the builder preview
+// (lib/krathongArt): the SVG markup, minus glow and flame, loaded as
+// an image and drawn on the canvas. One image per boat|flower variant,
+// cached for the session; the flame is drawn separately (below) so it
+// can flicker with the wind. The image loads async — a boat whose
+// image is not ready yet is skipped for that frame and appears once
+// loaded, so no wish is ever drawn as the old procedural boat.
+const krathongImageCache = new Map<string, HTMLImageElement>();
+function krathongImage(boat: string, flower: string, flame: string): HTMLImageElement {
+  const key = `${boat}|${flower}`;
+  let img = krathongImageCache.get(key);
+  if (!img) {
+    img = new Image();
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(krathongSvgDocument(boat, flower, flame));
+    krathongImageCache.set(key, img);
+  }
+  return img;
+}
+let _flamePath2D: Path2D | null = null;
+let _flameInnerPath2D: Path2D | null = null;
+// Path2D is a browser API (no Path2D on the Node prerender), so the
+// paths are built lazily on first use — drawKrathong only runs in the
+// browser — never at module scope.
+function flamePaths(): [Path2D, Path2D] {
+  if (!_flamePath2D) {
+    _flamePath2D = new Path2D(KRATHONG_FLAME_PATH);
+    _flameInnerPath2D = new Path2D(KRATHONG_FLAME_INNER_PATH);
+  }
+  return [_flamePath2D, _flameInnerPath2D!];
+}
 
 interface Sprite {
   id: string;
@@ -69,16 +109,6 @@ interface ReedBlade { h: number; lean: number; w: number; head: boolean }
 interface Tuft { x: number; y: number; blades: ReedBlade[] }
 interface Shimmer { x: number; y: number; w: number; phase: number; speed: number; cool: boolean }
 interface RippleArc { x: number; y: number; w: number; sag: number; base: number; phase: number; speed: number; gold: boolean; twin: boolean }
-interface SwiftBird { dx: number; dy: number; phase: number }
-interface SwiftFlock {
-  birds: SwiftBird[];
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  alpha: number;
-  toTemple: boolean;
-}
 interface Meteor { x: number; y: number; vx: number; vy: number; life: number }
 interface RainDrop { x: number; y: number; len: number; speed: number }
 interface RippleRing { x: number; y: number; r: number; max: number; a: number }
@@ -218,14 +248,14 @@ function createWaterRenderer(canvas: HTMLCanvasElement): { render: (o: WaterRend
         float moonBend=(n1-.5)*(.040+d*.075)+.012*sin(d*12.0-t*.31+n0*4.0);
         float moonX=u_moon+moonBend;
         float moonBand=exp(-pow((flowX-moonX)/(.012+d*.078),2.0));
-        float moonBreak=.28+.72*smoothstep(.16,.93,.5+.5*sin(d*21.0+n0*4.0-t*.65));
-        // Moon band, overcast-robust (fix1 v2): Bangkok is overcast most
-        // evenings and the live state is the veiled one, so the band keeps
-        // most of its strength under cloud — .28+.48*d, was .22+.42*d, and
-        // the cloud factor only trims a tenth, was three. The moon disc in
-        // the sky still veils (dim/halo untouched); only the water path
-        // holds, so the column stays the brightest thing on the water.
-        col+=u_cool*moonBand*moonBreak*(.28+.48*d)*(1.0-u_cloud*.001);
+        // A smooth vertical column, not a ladder: the break is a slow
+        // shimmer (one gentle wave over the whole depth, floor .62 so
+        // no dark gaps chop it into horizontal dashes) and the column
+        // dims with the moon — the cloud factor tracks the disc, so
+        // when the moon goes grey under cloud the path goes grey with
+        // it instead of staying bright on the water.
+        float moonBreak=.62+.38*smoothstep(.20,.90,.5+.5*sin(d*5.0+n0*2.0-t*.40));
+        col+=u_cool*moonBand*moonBreak*(.28+.48*d)*(1.0-u_cloud*.95);
         float glint=pow(max(0.0,sparkleRidge),5.0)*(0.08+.16*d);
         col+=vec3(.15,.20,.19)*glint;
         float rainTexture=(n2-.5)*u_rain*(.025+.075*d);
@@ -524,14 +554,12 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     const tufts: Tuft[] = [];
     const shimmers: Shimmer[] = [];
     const ripples: RippleArc[] = [];
-    let flocks: SwiftFlock[] = [];
     let meteors: Meteor[] = [];
     let rings: RippleRing[] = [];
     let rockets: Rocket[] = [];
     let particles: Particle[] = [];
     let flashes: Flash[] = [];
     let nextMeteor = 5000;
-    let nextFlock = 6000;
     let nextRocket = 2000;
     let nextStageRocket = 0; // A4: fireworks while the milestone is complete
     let nextShowRocket = 0;
@@ -752,6 +780,9 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       const seen = new Set<string>();
       list.forEach((wish, i) => {
         seen.add(wish.id);
+        // Start the boat artwork loading now, so it is ready by the
+        // first draw frame (see drawKrathong).
+        krathongImage(wish.boat, wish.flower, wish.flame);
         if (!sprites.has(wish.id)) {
           const row = i % ROWS;
           const fresh = wish.id === highlightRef.current;
@@ -800,79 +831,6 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       seedSky();
       syncSprites();
       draw(performance.now());
-    }
-
-    // --- swifts -----------------------------------------------------------
-    function spawnFlock(festival: boolean) {
-      const n = 3 + Math.floor(Math.random() * 4);
-      const birds: SwiftBird[] = [];
-      for (let i = 0; i < n; i++) {
-        birds.push({
-          dx: (i - n / 2) * 16 + (Math.random() - 0.5) * 8,
-          dy: (Math.random() - 0.5) * 14,
-          phase: Math.random() * Math.PI * 2,
-        });
-      }
-      if (festival) {
-        // On the night itself the flocks head for the temple spire.
-        const fromLeft = Math.random() < 0.5;
-        const x = fromLeft ? -30 : w + 30;
-        const y = h * (0.06 + Math.random() * 0.12);
-        const dx = templeX() - x;
-        const dy = templeTopY() - y;
-        const len = Math.hypot(dx, dy) || 1;
-        const sp = 0.7 + Math.random() * 0.3;
-        flocks.push({ birds, x, y, vx: (dx / len) * sp, vy: (dy / len) * sp, alpha: 0, toTemple: true });
-      } else {
-        const dir = Math.random() < 0.5 ? 1 : -1;
-        flocks.push({
-          birds,
-          x: dir > 0 ? -30 : w + 30,
-          y: h * (0.05 + Math.random() * 0.17),
-          vx: dir * (0.5 + Math.random() * 0.5),
-          vy: (Math.random() - 0.5) * 0.15,
-          alpha: 0,
-          toTemple: false,
-        });
-      }
-    }
-
-    // A swift, not a stroke: a slim body, swept sickle wings and a forked
-    // tail. The wings rise and fold on a real flap cycle — sin(t/110)
-    // lifts the tips, and the blades sweep further back as they fall, so
-    // the bird reads as flapping rather than bobbing. dir is the flight
-    // direction (1 right, -1 left).
-    function drawSwift(bx: number, by: number, t: number, phase: number, alpha: number, dir: number) {
-      const flap = Math.sin(t / 110 + phase);
-      const lift = 3 + flap * 4.5; // wing-tip height above the body
-      const sweep = 2 + (1 - flap) * 2.5; // how far back the tips sweep
-      ctx!.save();
-      ctx!.translate(bx, by);
-      ctx!.scale(dir, 1);
-      ctx!.fillStyle = `rgba(5, 8, 26, ${alpha.toFixed(3)})`;
-      // forked tail
-      ctx!.beginPath();
-      ctx!.moveTo(-4, 0);
-      ctx!.lineTo(-11, -2.4);
-      ctx!.lineTo(-9, 0);
-      ctx!.lineTo(-11, 2.4);
-      ctx!.closePath();
-      ctx!.fill();
-      // slim body
-      ctx!.beginPath();
-      ctx!.ellipse(0, 0, 6.5, 1.7, 0, 0, Math.PI * 2);
-      ctx!.fill();
-      // sickle wings: long blades curving back from the shoulder, tips
-      // rising with the flap
-      for (const side of [-1, 1]) {
-        ctx!.beginPath();
-        ctx!.moveTo(0, 0);
-        ctx!.quadraticCurveTo(-2, side * (lift * 0.55), -4 - sweep, side * lift);
-        ctx!.quadraticCurveTo(-1.5, side * (lift * 0.4), 1.5, 0);
-        ctx!.closePath();
-        ctx!.fill();
-      }
-      ctx!.restore();
     }
 
     // --- fireworks --------------------------------------------------------
@@ -968,10 +926,25 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     function drawKrathong(wish: Wish, s: Sprite, t: number) {
       const y = rowY(s.row) + Math.sin(t / 1100 + s.phase) * 3;
       const sc = s.scale;
-      const [c1, c2] = boatColors(wish.boat);
       const fc = flameColor(wish.flame);
       const age = t - s.bornAt;
       const wind = weatherRef.current.windShown;
+
+      // The boat is the builder's krathong artwork (lib/krathongArt) as
+      // an image — hull, candle, two flowers, rim and veins, exactly as
+      // the preview shows them. It loads async; until it is ready the
+      // boat is skipped for that frame and appears once loaded.
+      const img = krathongImage(wish.boat, wish.flower, wish.flame);
+      if (!img.complete || img.naturalWidth === 0) return;
+      const w = 66 * sc;
+      const h = (w * KRATHONG_VIEWBOX.h) / KRATHONG_VIEWBOX.w;
+      const left = s.x - w / 2;
+      const top = y + 7 * sc - (KRATHONG_HULL_CENTER_Y / KRATHONG_VIEWBOX.h) * h;
+      const k = w / KRATHONG_VIEWBOX.w; // SVG units -> canvas px
+      const flameCx = left + KRATHONG_FLAME_CENTER.x * k;
+      const flameCy = top + KRATHONG_FLAME_CENTER.y * k;
+      const flameBaseX = left + KRATHONG_FLAME_BASE.x * k;
+      const flameBaseY = top + KRATHONG_FLAME_BASE.y * k;
 
       // splash rings for a fresh krathong
       if (s.fresh && age < 2600) {
@@ -988,46 +961,28 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
 
       // flame glow — a stronger wind makes the flame dance harder
       const flick = 1 + (0.14 + wind * 0.1) * Math.sin(t / 170 + s.phase * 3);
-      const glow = ctx!.createRadialGradient(s.x, y - 26 * sc, 1, s.x, y - 26 * sc, 26 * sc);
+      const glow = ctx!.createRadialGradient(flameCx, flameCy, 1, flameCx, flameCy, 26 * sc);
       glow.addColorStop(0, fc + 'cc');
       glow.addColorStop(1, fc + '00');
       ctx!.fillStyle = glow;
       ctx!.beginPath();
-      ctx!.arc(s.x, y - 26 * sc, 26 * sc, 0, Math.PI * 2);
+      ctx!.arc(flameCx, flameCy, 26 * sc, 0, Math.PI * 2);
       ctx!.fill();
 
-      // candle
-      ctx!.fillStyle = '#f3e6c8';
-      ctx!.fillRect(s.x - 2.5 * sc, y - 16 * sc, 5 * sc, 9 * sc);
-      // flame
+      // the artwork itself: hull, candle, flowers, rim, veins, shimmer
+      ctx!.drawImage(img, left, top, w, h);
+
+      // flame — the same teardrop as the preview, flickering with the wind
+      const [flamePath2D, flameInnerPath2D] = flamePaths();
+      ctx!.save();
+      ctx!.translate(flameBaseX, flameBaseY);
+      ctx!.scale(k, k * flick);
+      ctx!.translate(-KRATHONG_FLAME_BASE.x, -KRATHONG_FLAME_BASE.y);
       ctx!.fillStyle = fc;
-      ctx!.beginPath();
-      ctx!.ellipse(s.x, y - 22 * sc, 3.4 * sc, 6 * sc * flick, 0, 0, Math.PI * 2);
-      ctx!.fill();
+      ctx!.fill(flamePath2D);
       ctx!.fillStyle = '#fff8dc';
-      ctx!.beginPath();
-      ctx!.ellipse(s.x, y - 19 * sc, 1.6 * sc, 3 * sc * flick, 0, 0, Math.PI * 2);
-      ctx!.fill();
-
-      // flower
-      ctx!.font = `${Math.round(20 * sc)}px serif`;
-      ctx!.textAlign = 'center';
-      ctx!.textBaseline = 'middle';
-      ctx!.fillText(flowerGlyph(wish.flower), s.x, y - 4 * sc);
-
-      // leaf boat
-      ctx!.fillStyle = c1;
-      ctx!.beginPath();
-      ctx!.ellipse(s.x, y + 6 * sc, 30 * sc, 9 * sc, 0, 0, Math.PI * 2);
-      ctx!.fill();
-      ctx!.fillStyle = c2;
-      ctx!.beginPath();
-      ctx!.ellipse(s.x, y + 8 * sc, 30 * sc, 7 * sc, 0, 0, Math.PI);
-      ctx!.fill();
-      ctx!.fillStyle = 'rgba(255,255,255,0.16)';
-      ctx!.beginPath();
-      ctx!.ellipse(s.x, y + 3 * sc, 26 * sc, 5 * sc, 0, Math.PI, Math.PI * 2);
-      ctx!.fill();
+      ctx!.fill(flameInnerPath2D);
+      ctx!.restore();
 
       // rising lantern for a fresh krathong — the wind carries it sideways
       if (s.fresh && age < 4000) {
@@ -1216,7 +1171,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // At ≥95% cover a continuous thin cloud sheet lies over the whole
       // sky band — over the moon, the stars and the cloud tops alike —
       // so no clear gap is left for the moon to shine through. It sits
-      // under the temple and the birds, and never touches the water or
+      // under the temple, and never touches the water or
       // the krathongs. The sheet is a gradient, dense at the top of the
       // band and thinning toward the horizon, and a couple of slow, soft
       // wisps keep it reading as cloud rather than a flat wash.
@@ -1246,27 +1201,6 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         ctx!.lineTo(m.x - m.vx * 12, m.y - m.vy * 12);
         ctx!.stroke();
       }
-
-      // swifts — in a still frame, three birds hold their place in the sky
-      if (reduced) {
-        drawSwift(w * 0.42, h * 0.1, 1200, 0, 0.9, 1);
-        drawSwift(w * 0.45, h * 0.115, 1200, 1.3, 0.9, 1);
-        drawSwift(w * 0.39, h * 0.12, 1200, 2.1, 0.9, 1);
-      } else {
-        for (const f of flocks) {
-          for (const b of f.birds) {
-            drawSwift(
-              f.x + b.dx,
-              f.y + b.dy + Math.sin(t / 700 + b.phase) * 2,
-              t,
-              b.phase,
-              f.alpha,
-              f.vx >= 0 ? 1 : -1,
-            );
-          }
-        }
-      }
-
 
       // fireworks above the temple — each rocket climbs with a glowing
       // trail, so the sky is never empty between bursts
@@ -1503,6 +1437,17 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       }
 
       // krathongs, far rows first
+      // Overcast dims the water itself: the photograph's gold glitter
+      // does not dim with the moon, so under a heavy overcast it stays
+      // bright while the moon goes grey. A dark veil over the water
+      // band — drawn after the ripples and rain, before the boats, so
+      // the boats stay lit — brings the whole column down with the
+      // moon. (The shader path already tracks the moon; this covers
+      // the photo's own reflection, which the shader cannot reach.)
+      if (overcast > 0) {
+        ctx!.fillStyle = `rgba(4, 6, 20, ${(overcast * 0.3).toFixed(3)})`;
+        ctx!.fillRect(0, skyH, w, h - skyH);
+      }
       const list = wishesRef.current;
       const ordered = [...sprites.values()].sort((a, b) => a.row - b.row);
       for (const s of ordered) {
@@ -1662,24 +1607,6 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         r.r += 0.6;
         r.a -= 0.008;
         return r.a > 0 && r.r < r.max;
-      });
-
-      // swifts — a flock every little while, never an empty sky for long
-      nextFlock -= 16;
-      if (nextFlock <= 0) {
-        nextFlock = 9000 + Math.random() * 12000;
-        spawnFlock(festival);
-      }
-      flocks = flocks.filter((f) => {
-        f.x += f.vx * (0.8 + wthr.windShown * 0.3);
-        f.y += f.vy + Math.sin(t / 900 + f.x) * 0.05;
-        f.alpha = Math.min(0.9, f.alpha + 0.01);
-        if (f.toTemple) {
-          const d = Math.hypot(templeX() - f.x, templeTopY() - f.y);
-          if (d < 70) f.alpha -= 0.03;
-        }
-        if (f.alpha <= 0) return false;
-        return f.x > -80 && f.x < w + 80;
       });
 
       // falling stars

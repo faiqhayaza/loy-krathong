@@ -619,12 +619,151 @@ export default function Page() {
         </div>
       </section>
 
+      {/* The river — full-width, directly under the hero: it is the
+          heart of the night. The float form sits below it, and My
+          Krathong follows the form, so the flow reads: see the river,
+          float your krathong, find it on the river and in your panel. */}
+      <section
+        className="section reveal"
+        id="river"
+        aria-labelledby="river-title"
+        onClick={(e) => {
+          // Hidden fireworks easter egg: any click in the river area
+          // counts — the canvas, the wish detail panel, the empty state.
+          // The builder form (#float) is a sibling section now, so its
+          // clicks never reach this handler; the guard stays as a
+          // backstop. One physical click dispatches exactly one event;
+          // the canvas itself counts nothing, so a click is never
+          // counted twice.
+          if ((e.target as HTMLElement).closest('#float')) return;
+          window.dispatchEvent(new Event('loy:river-click'));
+        }}
+      >
+        <div className="section-head">
+          <h2 id="river-title">{s.riverTitle}</h2>
+          <span className="pill" aria-live="polite">
+            {loading ? '…' : s.riverCount(wishes.length)}
+          </span>
+        </div>
+        <p className="section-intro">{s.riverHint}</p>
+        <div className="river-wrap" ref={riverRef}>
+          <RiverCanvas
+            wishes={riverWishes}
+            lang={lang}
+            highlightId={highlightId}
+            onHover={(wish, x, y) => setHover(wish ? { wish, x, y } : null)}
+            onSelect={(wish) => setPinned(wish)}
+            destinationId={riverDest.id}
+            milestoneStage={milestone.stage}
+          />
+          {/* Tonight's secret (C1): one object glimmers slightly
+              brighter than its surroundings — a hidden anchor over
+              the water, where the temple's reflection meets the
+              moon's path. Tapping it opens tonight's riddle. The
+              click must not also set off the fireworks easter egg
+              (the section counts river clicks), so it stops
+              propagation. */}
+          {tonightSecretOpen && (
+            <button
+              type="button"
+              className="secret-anchor"
+              aria-label={s.secretGlimmer}
+              title={s.secretGlimmer}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSecretSlug(riverDest.id);
+              }}
+            >
+              <span aria-hidden="true">✦</span>
+            </button>
+          )}
+          {/* Chunk B — blessing lanterns rising, thanks lanterns drifting. */}
+          <RiverMoments lang={lang} />
+          <div className="river-bar">
+            {pending.length > 0 && (
+              <span className="pill gold" role="status">
+                {s.newWishes(pending.length)}
+                <button type="button" onClick={refreshRiver}>{s.refreshRiver}</button>
+              </span>
+            )}
+          </div>
+          {wishes.length === 0 && !loading && (
+            <div className="river-empty">{s.riverEmpty}</div>
+          )}
+          {hover && (
+            <div className="tip-card" style={{ left: hover.x, top: hover.y }} role="tooltip">
+              {hover.wish.wish}
+              <span className="tip-name">
+                {hover.wish.name.trim() || s.anonymous} · {flowerGlyph(hover.wish.flower)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {pinned && (
+          <div className="pinned" aria-live="polite">
+            <div className="pinned-head">
+              <span className="wc-glyph" aria-hidden="true">{flowerGlyph(pinned.flower)}</span>
+              <button type="button" className="btn small ghost" onClick={() => setPinned(null)}>
+                {s.close}
+              </button>
+            </div>
+            <p className="pinned-wish">“{pinned.wish}”</p>
+            <span className="pinned-name">
+              {pinned.name.trim() || s.anonymous}
+              {pinned.translation ? ` · ${s.translatedNote}: “${pinned.translation}”` : ''}
+            </span>
+            <div className="reactions" role="group" aria-label={s.reactionsLabel}>
+              {REACTIONS.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  className="react-btn"
+                  aria-pressed={reacted[pinned.id] === r.id}
+                  aria-label={`${r.label[lang]} — ${pinned.reactions[r.id]}`}
+                  onClick={() => reactPinned(pinned, r.id)}
+                >
+                  <span aria-hidden="true">{r.glyph}</span>
+                  <span className="n">{pinned.reactions[r.id]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Float my krathong — below the river it floats into. */}
+      <section className="section reveal" id="float">
+        <div className="layout">
+          <Builder lang={lang} onFloated={handleFloated} />
+          <div>
+            {/* Chunk A side panel: tonight's missions + the milestone card. */}
+            <MissionsPanel lang={lang} cal={cal} />
+            <MilestoneCard lang={lang} cal={cal} day={milestoneDay} />
+          </div>
+        </div>
+      </section>
+
+      {/* My Krathong (Chunk C4) + journey card (C2). */}
+      <section className="section reveal" id="my-krathong" aria-labelledby="my-krathong-title">
+        <div className="section-head">
+          <h2 id="my-krathong-title">{s.myKrathongTitle}</h2>
+          <button type="button" className="btn ghost" onClick={() => setShowJourney(true)}>
+            {s.journeyOpen}
+          </button>
+        </div>
+        <p className="section-intro">{s.myKrathongIntro}</p>
+        <MyKrathong lang={lang} wishes={wishes} />
+      </section>
+
       {/* Seven destinations */}
       <section className="section reveal" id="destinations" aria-labelledby="dest-title">
         <div className="section-head">
           <h2 id="dest-title">{s.destinationsTitle}</h2>
           <span className="hint">
-            {stamps.length} / 7 {lang === 'th' ? 'ตรา' : 'stamps'}
+            {lang === 'th'
+              ? `${stamps.length} จาก 7 ตรา`
+              : `${stamps.length} of 7 stamps`}
           </span>
         </div>
         <p className="section-intro">{s.destinationsHint}</p>
@@ -684,137 +823,6 @@ export default function Page() {
       {/* Chunk B — the seven specials, one per night. */}
       <Specials lang={lang} tick={eventsTick} onOpenDialog={openSpecial} onFloatScroll={scrollToFloat} />
 
-      {/* River + builder */}
-      <section
-        className="section reveal"
-        id="river"
-        aria-labelledby="river-title"
-        onClick={(e) => {
-          // Hidden fireworks easter egg: any click in the river area
-          // counts — the canvas, the wish detail panel, the empty state.
-          // The builder form (#float) is excluded, so composing a wish
-          // never sets it off by accident. One physical click dispatches
-          // exactly one event; the canvas itself counts nothing, so a
-          // click is never counted twice.
-          if ((e.target as HTMLElement).closest('#float')) return;
-          window.dispatchEvent(new Event('loy:river-click'));
-        }}
-      >
-        <div className="section-head">
-          <h2 id="river-title">{s.riverTitle}</h2>
-          <span className="pill" aria-live="polite">
-            {loading ? '…' : s.riverCount(wishes.length)}
-          </span>
-        </div>
-        <p className="section-intro">{s.riverHint}</p>
-        <div className="layout">
-          <div>
-            <div className="river-wrap" ref={riverRef}>
-              <RiverCanvas
-                wishes={riverWishes}
-                lang={lang}
-                highlightId={highlightId}
-                onHover={(wish, x, y) => setHover(wish ? { wish, x, y } : null)}
-                onSelect={(wish) => setPinned(wish)}
-                destinationId={riverDest.id}
-                milestoneStage={milestone.stage}
-              />
-              {/* Tonight's secret (C1): one object glimmers slightly
-                  brighter than its surroundings — a hidden anchor over
-                  the water, where the temple's reflection meets the
-                  moon's path. Tapping it opens tonight's riddle. The
-                  click must not also set off the fireworks easter egg
-                  (the section counts river clicks), so it stops
-                  propagation. */}
-              {tonightSecretOpen && (
-                <button
-                  type="button"
-                  className="secret-anchor"
-                  aria-label={s.secretGlimmer}
-                  title={s.secretGlimmer}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSecretSlug(riverDest.id);
-                  }}
-                >
-                  <span aria-hidden="true">✦</span>
-                </button>
-              )}
-              {/* Chunk B — blessing lanterns rising, thanks lanterns drifting. */}
-              <RiverMoments lang={lang} />
-              <div className="river-bar">
-                {pending.length > 0 && (
-                  <span className="pill gold" role="status">
-                    {s.newWishes(pending.length)}
-                    <button type="button" onClick={refreshRiver}>{s.refreshRiver}</button>
-                  </span>
-                )}
-              </div>
-              <div className="river-credit">
-                River photograph: Wat Arun on the Chao Phraya, Bangkok —{' '}
-                <a
-                  href="https://commons.wikimedia.org/wiki/File:An_illuminated_ARUN_WAT_on_the_banks_of_the_Chao_Phraya_river_in_Bangkok_during_the_traditional_Loi_Krathong_festival_on_Nov.11_night..JPG"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Wikimedia Commons
-                </a>
-                , CC0
-              </div>
-              {wishes.length === 0 && !loading && (
-                <div className="river-empty">{s.riverEmpty}</div>
-              )}
-              {hover && (
-                <div className="tip-card" style={{ left: hover.x, top: hover.y }} role="tooltip">
-                  {hover.wish.wish}
-                  <span className="tip-name">
-                    {hover.wish.name.trim() || s.anonymous} · {flowerGlyph(hover.wish.flower)}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {pinned && (
-              <div className="pinned" aria-live="polite">
-                <div className="pinned-head">
-                  <span className="wc-glyph" aria-hidden="true">{flowerGlyph(pinned.flower)}</span>
-                  <button type="button" className="btn small ghost" onClick={() => setPinned(null)}>
-                    {s.close}
-                  </button>
-                </div>
-                <p className="pinned-wish">“{pinned.wish}”</p>
-                <span className="pinned-name">
-                  {pinned.name.trim() || s.anonymous}
-                  {pinned.translation ? ` · ${s.translatedNote}: “${pinned.translation}”` : ''}
-                </span>
-                <div className="reactions" role="group" aria-label={s.reactionsLabel}>
-                  {REACTIONS.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      className="react-btn"
-                      aria-pressed={reacted[pinned.id] === r.id}
-                      aria-label={`${r.label[lang]} — ${pinned.reactions[r.id]}`}
-                      onClick={() => reactPinned(pinned, r.id)}
-                    >
-                      <span aria-hidden="true">{r.glyph}</span>
-                      <span className="n">{pinned.reactions[r.id]}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div id="float">
-            <Builder lang={lang} onFloated={handleFloated} />
-            {/* Chunk A side panel: tonight's missions + the milestone card. */}
-            <MissionsPanel lang={lang} cal={cal} />
-            <MilestoneCard lang={lang} cal={cal} day={milestoneDay} />
-          </div>
-        </div>
-      </section>
-
       {/* Missions — all seven nights (chunk A; the Me tab lists these once C4 lands it there). */}
       <section className="section reveal" id="missions" aria-labelledby="missions-all-title">
         <div className="section-head">
@@ -844,18 +852,6 @@ export default function Page() {
             setSpecialDialog('bless');
           }}
         />
-      </section>
-
-      {/* My Krathong (Chunk C4) + journey card (C2). */}
-      <section className="section reveal" id="my-krathong" aria-labelledby="my-krathong-title">
-        <div className="section-head">
-          <h2 id="my-krathong-title">{s.myKrathongTitle}</h2>
-          <button type="button" className="btn ghost" onClick={() => setShowJourney(true)}>
-            {s.journeyOpen}
-          </button>
-        </div>
-        <p className="section-intro">{s.myKrathongIntro}</p>
-        <MyKrathong lang={lang} wishes={wishes} />
       </section>
 
       {/* Chunk B — the special dialogs and the finale scene. */}

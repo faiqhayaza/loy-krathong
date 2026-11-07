@@ -102,19 +102,32 @@ class AudioManager {
     return el;
   }
 
-  // Start the music. Safe to call repeatedly; only the first call that
-  // follows a user gesture does anything (browsers reject play() before
-  // one, and the rejection resets `started` so a later gesture retries).
+  // Start the music, or resume it if it started once and is now
+  // paused. Safe to call repeatedly; it is wired to every pointerdown
+  // / keydown, so a fresh gesture is always a new chance to play.
+  // Browsers reject play() before the first gesture, and that
+  // rejection resets `started` so a later gesture retries. But a
+  // play() that SUCCEEDED can still end up paused — an interrupted
+  // resume after a tab switch or a call, a rejected resume when the
+  // tab comes back — and with `started` true the old code never tried
+  // again, so the music stayed silent until the visitor flipped the
+  // toggle off and on. The second branch closes that gap: if the
+  // music is paused and sound is on, a gesture resumes it.
   ensureStarted() {
-    if (typeof window === 'undefined' || this.started || !this.isEnabled()) return;
-    this.started = true;
-    const a = this.getMusic();
-    a.volume = 0;
-    const p = a.play();
-    if (p) {
-      p.then(() => this.fadeIn()).catch(() => {
-        this.started = false;
-      });
+    if (typeof window === 'undefined' || !this.isEnabled()) return;
+    if (!this.started) {
+      this.started = true;
+      const a = this.getMusic();
+      a.volume = 0;
+      const p = a.play();
+      if (p) {
+        p.then(() => this.fadeIn()).catch(() => {
+          this.started = false;
+        });
+      }
+    } else if (this.music && this.music.paused && !document.hidden) {
+      const p = this.music.play();
+      if (p) p.then(() => this.fadeIn()).catch(() => {});
     }
   }
 
@@ -149,10 +162,9 @@ class AudioManager {
     }
     if (on) {
       // The toggle click is itself a gesture, so starting here is allowed.
+      // ensureStarted also resumes a music element that started once
+      // and is paused, so this is the only path needed.
       this.ensureStarted();
-      if (this.music && this.music.paused && this.started && !document.hidden) {
-        this.music.play().catch(() => {});
-      }
     } else {
       this.stopFade();
       if (this.music) this.music.pause();

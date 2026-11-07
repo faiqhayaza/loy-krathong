@@ -236,15 +236,6 @@ button, input, textarea { font: inherit; color: inherit; }
   position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between;
   gap: 8px; align-items: flex-start; pointer-events: none; z-index: 2;
 }
-/* Photo credit for the river photograph (CC0 1.0 — public-domain
-   dedication, so attribution is not required; credited anyway).
-   Tiny and muted, bottom right over the dark near water; it never
-   intercepts clicks. */
-.river-credit {
-  position: absolute; right: 10px; bottom: 8px; z-index: 2;
-  font-size: 10.5px; color: rgba(247, 241, 227, 0.45); pointer-events: none;
-}
-.river-credit a { color: inherit; pointer-events: auto; }
 .river-bar > * { pointer-events: auto; }
 .pill {
   display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px;
