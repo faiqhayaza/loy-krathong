@@ -8,14 +8,16 @@
 
 import { Redis } from '@upstash/redis';
 import type { ReactionCounts, ReactionId, Wish } from './data';
+import type { FestivalEvent } from './events';
 import { EMPTY_REACTIONS } from './data';
 import { SEED_WISHES } from './seed';
 import { msUntilBangkokMidnight } from './bangkok';
 
 const WISHES_KEY = 'loy:wishes';
 const REACTIONS_KEY = (id: string) => `loy:reactions:${id}`;
-const RATE_KEY = (ip: string) => `loy:rl:${ip}`;
+const RATE_KEY = (ip: string, scope = '') => `loy:rl:${scope ? `${scope}:` : ''}${ip}`;
 const DAILY_KEY = (ip: string, day: string) => `loy:daily:${ip}:${day}`;
+const EVENTS_KEY = (visitorId: string) => `loy:events:${visitorId}`;
 
 const MAX_STORED = 200;
 const POSTS_PER_MINUTE = 5;
@@ -54,6 +56,7 @@ const memWishes: Wish[] = [];
 const memReactions = new Map<string, ReactionCounts>();
 const memRate = new Map<string, { count: number; resetAt: number }>();
 const memDaily = new Map<string, number>(); // key -> ms timestamp when the day slot expires
+const memEvents = new Map<string, FestivalEvent[]>(); // visitor recovery id -> events
 
 // ---- Reads ---------------------------------------------------------------
 
@@ -244,13 +247,18 @@ export async function deleteWish(id: string): Promise<boolean> {
 
 // ---- Rate limiting ---------------------------------------------------------
 
-/** Max 5 posts per minute per IP. Returns true when the post is allowed. */
-export async function checkRateLimit(ip: string): Promise<boolean> {
+/**
+ * Max 5 posts per minute per IP. Returns true when the post is allowed.
+ * `scope` keeps buckets separate per endpoint family ('' is the float
+ * bucket); without it, a visitor reacting a lot could eat the float
+ * budget and be unable to float. The event route uses scope 'event'.
+ */
+export async function checkRateLimit(ip: string, scope = ''): Promise<boolean> {
   const client = getRedis();
   if (client) {
     try {
-      const count = await client.incr(RATE_KEY(ip));
-      if (count === 1) await client.expire(RATE_KEY(ip), 60);
+      const count = await client.incr(RATE_KEY(ip, scope));
+      if (count === 1) await client.expire(RATE_KEY(ip, scope), 60);
       return count <= POSTS_PER_MINUTE;
     } catch (err) {
       console.error('[loy] Redis rate-limit check failed, allowing:', err);
@@ -258,9 +266,9 @@ export async function checkRateLimit(ip: string): Promise<boolean> {
     }
   }
   const now = Date.now();
-  const entry = memRate.get(ip);
+  const entry = memRate.get(RATE_KEY(ip, scope));
   if (!entry || now > entry.resetAt) {
-    memRate.set(ip, { count: 1, resetAt: now + 60000 });
+    memRate.set(RATE_KEY(ip, scope), { count: 1, resetAt: now + 60000 });
     return true;
   }
   entry.count += 1;
@@ -294,4 +302,83 @@ export async function checkDailyLimit(ip: string, day: string): Promise<boolean>
   if (expiresAt !== undefined && now < expiresAt) return false;
   memDaily.set(key, now + msUntilBangkokMidnight(now));
   return true;
+}
+
+// ---- Server event log (D1) -------------------------------------------------
+
+/**
+ * The forward-compatible per-visitor event log E1 will later read as
+ * `me.events`: Redis list `loy:events:<recovery-id>` (in-memory fallback
+ * when Redis is absent, same pattern as wishes). Keyed by the visitor's
+ * recovery ID — never by nickname, eID, or anything personal. The
+ * device-local store (`lib/events.ts`) is the source of truth for now;
+ * this log mirrors it. Repeats (same day + kind + ref) are ignored, so
+ * the log stays deduped like the client store. Returns true when a new
+ * event was recorded.
+ */
+const MAX_EVENTS_PER_VISITOR = 500;
+
+export async function recordServerEvent(visitorId: string, event: FestivalEvent): Promise<boolean> {
+  const key = EVENTS_KEY(visitorId);
+  const client = getRedis();
+  if (client) {
+    try {
+      const raw = await client.lrange(key, 0, MAX_EVENTS_PER_VISITOR - 1);
+      for (const item of raw) {
+        try {
+          const e = (typeof item === 'string' ? JSON.parse(item) : item) as FestivalEvent;
+          if (e.day === event.day && e.kind === event.kind && e.ref === event.ref) return false;
+        } catch {
+          // skip a corrupt entry; the new event still records
+        }
+      }
+      await client.rpush(key, JSON.stringify(event));
+      await client.ltrim(key, 0, MAX_EVENTS_PER_VISITOR - 1);
+      return true;
+    } catch (err) {
+      console.error('[loy] Redis event write failed, keeping event in memory:', err);
+    }
+  }
+  const list = memEvents.get(visitorId) ?? [];
+  if (list.some((e) => e.day === event.day && e.kind === event.kind && e.ref === event.ref)) return false;
+  list.push(event);
+  if (list.length > MAX_EVENTS_PER_VISITOR) list.splice(0, list.length - MAX_EVENTS_PER_VISITOR);
+  memEvents.set(visitorId, list);
+  return true;
+}
+
+/** Remove one event from the visitor's server log. True when one was removed. */
+export async function removeServerEvent(
+  visitorId: string,
+  day: string,
+  kind: FestivalEvent['kind'],
+  ref: string | number,
+): Promise<boolean> {
+  const key = EVENTS_KEY(visitorId);
+  const client = getRedis();
+  if (client) {
+    try {
+      const raw = await client.lrange(key, 0, MAX_EVENTS_PER_VISITOR - 1);
+      let removed = false;
+      for (const item of raw) {
+        const text = typeof item === 'string' ? item : JSON.stringify(item);
+        try {
+          const e = JSON.parse(text) as FestivalEvent;
+          if (e.day === day && e.kind === kind && e.ref === ref) {
+            removed = (await client.lrem(key, 1, text)) > 0 || removed;
+          }
+        } catch {
+          // ignore corrupt entries
+        }
+      }
+      return removed;
+    } catch (err) {
+      console.error('[loy] Redis event remove failed:', err);
+      return false;
+    }
+  }
+  const list = memEvents.get(visitorId) ?? [];
+  const kept = list.filter((e) => !(e.day === day && e.kind === kind && e.ref === ref));
+  memEvents.set(visitorId, kept);
+  return kept.length !== list.length;
 }

@@ -2,13 +2,25 @@
 // boom on each burst during the shows.
 //
 // The music is a real recording, shipped locally:
-//   public/audio/kalimba-calm.mp3 — "Kalimba Atmosphere" by soramoosic,
-//   CC0 via Freesound. Measured before shipping: continuous playing for
-//   the whole 53 s (no silent gaps), even level (mean −23.5 dB, max −7.7),
-//   quiet at both ends, so the loop seam is gentle. No freely-licensed
-//   track exists that is both kalimba AND Thai — the one genuine Thai
-//   instrument recording found (a khim, Freesound) has a 10 s near-silent
-//   intro and uneven dynamics, so it was measured and rejected as a loop.
+//   public/audio/kalimba-thai-cover.mp3 — a Thai kalimba cover by "nid",
+//   supplied by Faiq (original: workspace/user/files/
+//   kalimba-cover-by-nid-ndtdf-1.mp3, 99 s, 48 kHz stereo). Measured
+//   before shipping (Faiq's numbers, confirmed): continuous playing for
+//   the whole 99 s (no silent gaps), first 1 s mean −15.6 dB / max
+//   −7.5 dB with the first 0.56 s silent below −50 dB (silence 0 → 0.564 s),
+//   last 1 s mean −17.6 dB / max −4.8 dB — the music is still playing loud
+//   at the very end, a hard cut, no fade-out in the last 3 s. A plain
+//   loop=true on the raw file would click every 99 s (hard cut, then
+//   0.56 s of silence, then restart), so the shipped file is NOT the raw
+//   recording — it is a seamless loop baked with ffmpeg (see
+//   VERIFICATION.md, "Kalimba swap — Thai cover, seamless loop"):
+//   leading silence trimmed (0.564 s), level matched to the previous
+//   track (−11.08 dB, now RMS −23.5 dB / −21.0 LUFS, same as before),
+//   and the last 2.5 s of the tail crossfaded over the head with
+//   acrossfade (equal-power qsin), so the file loops with a plain
+//   loop=true and no audible seam. The previous track
+//   (public/audio/kalimba-calm.mp3 — "Kalimba Atmosphere" by soramoosic,
+//   CC0 via Freesound) is still in the tree for now.
 // The firework sound is also CC0 via Freesound:
 //   public/audio/firework.mp3 — "fireworks exploding 1" by soundmary,
 //   one 5.5 s explosion (loud at once, then crackle decay), which maps
@@ -21,7 +33,7 @@
 // The music pauses while the tab is hidden and resumes when visible.
 
 const SOUND_KEY = 'loy:sound';
-const MUSIC_URL = '/audio/kalimba-calm.mp3';
+const MUSIC_URL = '/audio/kalimba-thai-cover.mp3';
 const FIREWORK_URL = '/audio/firework.mp3';
 const MUSIC_VOLUME = 0.25;
 const FIREWORK_VOLUME = 0.4;

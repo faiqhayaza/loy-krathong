@@ -7,6 +7,7 @@
 
 import { useCallback, useState } from 'react';
 import type { ReactionId, Wish } from '@/lib/data';
+import { recordEvent, removeEvent } from '@/lib/events';
 
 const REACTED_KEY = 'loy:reacted';
 
@@ -57,6 +58,11 @@ export function useReactions() {
         } catch {
           // private mode: the reaction still counted
         }
+        // D1: a reaction added is a `react` event (ref = wish id); a
+        // reaction taken back removes it, so the distinct-reacted count
+        // behind the kindness mission stays truthful.
+        if (next) recordEvent('react', wishId);
+        else removeEvent('react', wishId);
         return data.reactions;
       } catch {
         return null;

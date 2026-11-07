@@ -1253,3 +1253,278 @@ items. The visual round was DONE; these are the only two things touched.
   the shots) — tag-on-tag, not temple occlusion.
 - Not verified: live-browser behaviour on a real device. Nothing is
   pushed or deployed.
+
+## D1 — Event store + nickname/recovery-ID gate (2026-11-07)
+
+Restoration chunk D1. Full evidence note + screenshots + the CDP script:
+`~/workspace/lk-restore-d1/EVIDENCE.md` (and `verify_d1.py`,
+`d1-gate.png`, `d1-gate-key.png`, `d1-gate-restore.png`, `d1-visit.png`,
+`d1-react.png`). Nothing pushed, nothing deployed; no test wishes posted
+to the live river (the test wishes lived in the isolated :3201 servers'
+in-memory stores and died with them; a second run followed the gate
+correction).
+
+### What changed
+
+- `lib/events.ts` (new) — client event store, localStorage `loy:events`,
+  `recordEvent` / `hasEvent` / `removeEvent` / `eventsFor`, all 12 kinds
+  (`visit_place`, `react`, `float`, `float_slot`, `quiz`, `blessing`,
+  `candle`, `gratitude`, `share`, `finale`, `flight_done`, `flight_skip`),
+  deduped by day+kind+ref, SSR-safe, day from `bangkokDay()`. Each record
+  is mirrored fire-and-forget to `POST /api/event` with the `x-visitor-id`
+  header (skipped when no identity exists yet). Semantics ported from the
+  HTML's `recordEvent`/`hasEvent`.
+- `lib/identity.ts` (new) — nickname + 10-digit recovery ID
+  (crypto.getRandomValues, first digit 1–9; `createIdentity`,
+  `restoreIdentity`, `getIdentity`/`getVisitorId`), stored as JSON under
+  `loy:identity`. No eID, no email, no password, nothing personal.
+- `components/IdentityDialog.tsx` (new) — the sign-up / sign-in **gate,
+  the whole first page**: while it is up the site is not rendered at all
+  (no hero, no passport, no river, no wall — not even in the DOM or the
+  SSR HTML). Sign-up: nickname → ID shown big with a copy button + "only
+  way back" message → Enter. Sign-in: nickname + 10-digit ID; malformed
+  IDs rejected with a friendly error. EN/TH strings inline in the
+  component; `lib/i18n.ts` untouched. The /admin page keeps its own
+  password and is out of scope.
+- `app/api/event/route.ts` (new) — POST `{kind, ref}` (optional
+  `remove: true`), kind validated against the 12 kinds, ref string/number,
+  requires `x-visitor-id` (10 digits), rate-limited 5/min/IP in its own
+  bucket (scope `event`), server log in Redis `loy:events:<recovery-id>`
+  (in-memory fallback), deduped server-side too.
+- `lib/store.ts` — `recordServerEvent` / `removeServerEvent`; `checkRateLimit`
+  gained an optional `scope` (default `''` = the existing float bucket,
+  unchanged).
+- Wiring: `app/page.tsx` `visit()` records `visit_place` (ref = day number,
+  only while the night is open, mirroring the HTML's `recordVisit`);
+  `components/useReactions.ts` records `react` on add, removes it on
+  toggle-off. The gate is the page's first render: `app/page.tsx` returns
+  only the gate while it is up or undecided (tri-state `boolean | null`,
+  so SSR and first paint agree and the site never flashes, not even for
+  a frame). (First version rendered the gate as an overlay over the site;
+  corrected 2026-11-07 ~09:55 to the full first-page gate per Faiq's
+  confirmed shape — see the correction note in
+  `~/workspace/lk-restore-d1/EVIDENCE.md`.)
+- `app/globals.css` — `.id-gate` / `.id-card` / `.id-key` styles.
+
+### Verification
+
+- **Build**: delivered tree `rm -rf .next && npm run build` — **pass,
+  clean** (TypeScript strict + lint), `/` 39.2 kB / 126 kB First Load JS
+  (was 123 kB), `/api/event` listed as a dynamic route. Clean-copy build
+  in `~/workspace/lk-restore-d1/build-copy/` also passes.
+- **Browser (headless Chromium, CDP, `verify_d1.py`) — 21/21 pass**: gate
+  shows on a fresh profile with no dismiss path, and the site content is
+  NOT reachable behind it (no `.page`/`.hero`/`.dest`/`.wish-card` in the
+  DOM); sign-up generates a 10-digit ID (`6222109252` on the final run)
+  and enters the site (`.page` renders); reload keeps the same identity
+  with no gate and the site renders; clearing storage brings the gate
+  back and hides the site again; restore rejects `123` with "That key
+  does not look right — it must be exactly 10 digits." and accepts
+  `1234567890`; with the page time-travelled to 2026-11-18, clicking
+  Bangkok writes `[{day:"2026-11-18",kind:"visit_place",ref:1}]` to
+  `loy:events` and a second click leaves exactly one entry; reacting to
+  the floated test wish writes a `react` event with the wish id, and
+  toggling the reaction off removes it. **SSR check by curl**: the
+  server-rendered HTML contains only the gate (nickname input,
+  `id-gate-title`) and no `.page`, hero, destination strip or wish wall —
+  even with JS disabled, only the gate is served.
+- **API (curl, same :3201 server)**: valid kind → 200 `recorded:true`;
+  repeat → 200 `recorded:false` (server dedupe); the browser-synced
+  `visit_place` for visitor `1234567890` → `recorded:false`, proving the
+  browser's fire-and-forget sync reached the server log; invalid kind →
+  400 `unknown_kind`; missing header → 401 `missing_visitor`; malformed
+  id → 400 `invalid_visitor`; bad ref type → 400 `invalid_ref`;
+  `{remove:true}` → `removed:true` then `removed:false`; rate limit →
+  `200 200 200 200 200 429`.
+
+### Decisions the plan did not specify
+
+- **Separate rate-limit bucket** for events (`checkRateLimit` scope
+  `event`): event traffic can never eat the float budget and block someone
+  from floating. The 5/min/IP trip still holds for the event endpoint.
+- **Server dedupe + `remove` support** in the route, mirroring the client
+  semantics so the future `me.events` stays truthful.
+- **Gate strings inline** in the dialog (D1 adds no `lib/i18n.ts` keys).
+- **No "view my key later" affordance yet**: after entering, there is no
+  in-site way to re-view the recovery ID — a follow-up for a later chunk
+  (e.g. in the My Krathong panel).
+- **Events before sign-up are local-only**: the sync is skipped silently
+  when no identity is stored (in practice the gate precedes any event).
+
+### What could not be verified
+
+- **Copy button, clipboard path**: in headless Chromium
+  `navigator.clipboard.writeText` did not complete and the legacy
+  `execCommand('copy')` did not report success — but the fallback
+  selection held the full ID, so the key is one Ctrl/Cmd+C away. The
+  clipboard-write success path (button flipping to "Copied ✓") needs one
+  check in a real browser with clipboard permission.
+- **Redis path**: no Redis credentials on this box, so the server event log
+  was exercised only through the in-memory fallback. Re-run one
+  `POST /api/event` with the Upstash vars set to confirm
+  `loy:events:<id>` lands in Redis.
+- **Visit in real time**: today is 2026-11-07 (phase `before`), so the
+  visit click was verified with a Date override freezing the page at
+  2026-11-18 noon Bangkok; the real-night click is the same code path.
+- **Restore pulling progress**: by design D1 restore only stores the ID
+  locally — cross-device progress restore is E1, and the sign-in copy
+  says so plainly.
+- **Grandfathered visits** carry no `visit_place` event (events are stamped
+  with the day recorded; the HTML's missions only count events on the
+  night's own date), so those visitors re-visit on the night for the
+  visit mission — the HTML behaves the same in its archive phase.
+
+## Kalimba swap — Thai cover, seamless loop, 2026-11-07 ~12:25–13:05
+
+Replaces the CC0 "Kalimba Atmosphere" track with Faiq's own Thai kalimba
+cover. Faiq's requirement (voice, 2026-11-07 ~12:25, supersedes the
+"trim only if needed" brief): the loop must be SEAMLESS and INFINITE —
+never ends, no audible seam at the loop point. A plain `loop=true` on the
+raw file would click every 99 s, so the seam is baked into the shipped
+file with ffmpeg. Nothing river-related was touched; nothing pushed or
+deployed.
+
+### 1. Source and measurements
+
+- New track: Thai kalimba cover by artist "nid", supplied by Faiq.
+  Original: `workspace/user/files/kalimba-cover-by-nid-ndtdf-1.mp3`,
+  99.0 s, 48 kHz stereo MP3, 1.78 MB, 143 kb/s. The original was NOT
+  modified (md5 `936e339d5c89d06a112c9e3aedd52e58`, checked before and
+  after; the shipped file is a processed copy).
+- Measured (Faiq's numbers, confirmed independently): first 1 s mean
+  −15.6 dB / max −7.5 dB, BUT the first 0.56 s is silence below −50 dB
+  (silence 0 → 0.564 s); last 1 s mean −17.6 dB / max −4.8 dB — the
+  music is still playing loud at the very end, a hard cut, no fade-out
+  in the last 3 s. Independent re-measurement agreed on the decisive
+  facts: 0.564 s leading silence (first sample above −50 dB at
+  0.5643 s), continuous playing for the whole 99 s (no silent gaps),
+  overall RMS −12.47 dB, peak −1.17 dB, loudnorm −9.93 LUFS — 11 dB
+  louder than the previous track (−21.01 LUFS) — and a tail that decays
+  to −25.6 dB in the final 100 ms but is cut mid-decay.
+- Old track kept in place for now: `public/audio/kalimba-calm.mp3`
+  (846 KB, 52.8 s) is untouched; `public/audio/firework.mp3` is
+  untouched.
+
+### 2. Processing (ffmpeg, one filter graph)
+
+An earlier draft used a 1.5 s fade-out instead of a crossfade; that was
+superseded by the seamless-loop requirement and the file was replaced,
+never shipped. The shipped file is built as:
+
+```
+atrim=0.5643 (trim leading silence), volume=-11.08dB (level-match),
+asplit=3 -> body X[2.5:95.9357], tail X[95.9357:98.4357], head X[0:2.5]
+acrossfade(tail, head, d=2.5, c1=qsin, c2=qsin) -> blend
+concat(body, blend) -> 95.9357 s, libmp3lame -q:a 3, 48 kHz stereo
+```
+
+Why this construction: the blend ends with the head faded in to full
+(X[2.5]) and the file restarts at X[2.5], so the loop point is
+continuous by construction and every part of the trimmed track appears
+exactly once per period. The crossfade is equal-power (qsin), not
+triangular, so there is no level dip in the middle of the blend. No
+crossfade was considered against the opening attack — the attack is
+preserved, it is the tail that fades under it.
+
+- Shipped file: `public/audio/kalimba-thai-cover.mp3`, 820,581 bytes,
+  md5 `a6b5137962b35c0bb0cd8bfb2a562142`, duration 95.94 s.
+- Level check on the shipped file: RMS −23.50 dB, loudnorm −20.94 LUFS
+  (old track −21.01 — 0.07 LUFS apart), peak −11.75 dBTP, LRA 1.50 LU.
+  The two channels are near-identical (max |ch0−ch1| 0.0068) — the
+  cover is effectively mono.
+- The filter did what was designed: expected-vs-actual blend
+  correlation 0.9983, body 1.0000 (the 0.0017 is MP3 re-encode noise).
+  The one dip in the blend region is the music's own phrasing (a
+  −31.8 dB breath between phrases at X≈96.1 s), reproduced exactly.
+- `lib/audio.ts`: only `MUSIC_URL` changed to
+  `/audio/kalimba-thai-cover.mp3` plus the header comment. ALL playback
+  behaviour is unchanged: fade-in ~2 s, volume 0.25, `loop=true`, starts
+  on the visitor's first pointerdown/keydown, sound toggle
+  (`components/SoundToggle.tsx`), preference in localStorage
+  (`loy:sound`), pauses when the tab is hidden. Firework SFX untouched.
+
+### 3. File-level seam verification (Python, decoded WAV)
+
+Looped signal = file ++ file, analysed sample by sample:
+
+- Max sample-to-sample step at the exact seam: 0.0191 (48 kHz mono)
+  vs global max step 0.0441 and p99.9 0.0197 — the seam step is
+  ordinary, not an outlier.
+- At 44.1 kHz stereo × 0.25 volume (exactly what a browser tap sees):
+  exact seam step 0.00719; seam ±50 ms max step 0.00875 (0.24× the
+  local peak — a normal musical step); elsewhere p99 0.00423, max
+  0.01006 — the seam step sits inside the normal range.
+- RMS in 50 ms windows across the loop boundary: −21.8, −23.7, −23.9,
+  −23.7, −25.7 dB — continuous, no silence hole, no spike.
+- Verdict at file level: PASS — the shipped file loops seamlessly.
+
+### 4. Browser verification (headless Chrome 158, clean-copy `next start`)
+
+Served a clean copy (`/tmp/lk-kalimba-verify`, `next start -p 3202`)
+and drove Chrome via CDP. Note: the D1 identity gate is in this tree,
+so verification signed up with a test nickname ("KalimbaTest…") and
+entered the site; the gate itself was not under test.
+
+- Before any click: 0 `<audio>` elements.
+- After a REAL CDP mouse click: audio `kalimba-thai-cover.mp3`,
+  `paused === false`, `currentTime` advancing (0.68 → 1.69 s), volume
+  ramping through the fade-in to 0.25, `loop === true`,
+  duration 95.94 s.
+- Toggle OFF (real click on the sound toggle): `paused === true`,
+  `localStorage loy:sound === 'off'`. Reload: gate skipped (identity
+  persisted), no audio element, toggle reads "Sound off", pref still
+  'off'. Toggle ON (real click): `paused === false`, `currentTime`
+  advancing (1.15 → 1.93 s), volume ramping back to 0.25.
+- Loop crossing: seek to `duration − 1.2`, `currentTime` wraps
+  (96.17 → 0.02), playback continues, exactly one wrap event, no
+  errors. `npm run build` clean in the delivered tree (final state).
+
+### 5. The tap dropout — what it is and what it is not (read this)
+
+Playing through the loop point was also recorded through a Web Audio
+tap (`MediaElementSource` → `ScriptProcessor`, then repeated with an
+`AudioWorklet` tap, which runs on the audio thread). Both taps record
+the SAME thing at the loop point: a ~35–66 ms near-silence dropout
+(1–1.5 AudioContext buffers) straddling the wrap, with a resumption
+step of ~0.020–0.026. Control runs: ZERO dropouts in 134 callbacks of
+normal playback and a clean mid-file seek — the dropout appears ONLY
+at the loop, in 3/3 runs. The resumption step is smaller than the
+piece's own pluck transients (max 0.054 in normal playback), so the
+step is not the issue; the brief silence is.
+
+The dropout is in the TAP, not in the shipped playback path:
+
+- `chrome://media-internals` for the native (untapped) player
+  (player_id 4, this run) shows the native loop seek taking ~5 ms
+  (`kEnded` 03.355 → `seek_target 0` 03.360 → `kPlaying` 03.361),
+  NO underflow events, NO errors, `BUFFERING_HAVE_ENOUGH` throughout.
+  The element resumes in 5 ms; the tap's ~35–66 ms is one AudioContext
+  buffer flushed at the seek — the tap's buffering, not the element's
+  output.
+- The old file's loop was tested the same way: its seam is quiet by
+  design (RMS −65 dB around the loop), so it shows no resumption step;
+  it cannot distinguish the mechanism, only that a quiet seam hides
+  any tap artefact.
+- One more artefact of the headless environment, not of the file: the
+  demuxer's end-of-file duration reads 96.16946 s vs the metadata
+  duration 95.935708 s (0.234 s of trailing MP3 padding in the
+  demuxer's accounting). The rendered audio contains no 0.23 s of extra
+  silence — a tap would have shown a 5-buffer dropout; it shows ~1–1.5
+  buffers — so this is timestamp accounting, not played audio.
+- Minor observation, no user impact: one partial dropout buffer also
+  appears immediately after a seek to `duration − 1.2` (seek flush);
+  the site never seeks in normal use.
+
+### 6. What could NOT be verified — stated plainly
+
+- Audible seamlessness to a human ear: headless Chrome has no audio
+  output. State and waveform were verified, not sound. The file is
+  proven seamless at sample level and the native loop is proven fast
+  and clean at the pipeline level, but a final listen on a real machine
+  (Faiq's PC, his Bangkok connection) is the only complete check.
+- The native (untapped) path's waveform cannot be verified headlessly:
+  any waveform tap goes through the same `MediaElementSource` handoff
+  that produces the ~35–66 ms dropout, so the tap cannot prove or
+  disprove a gap in the path the visitor actually hears. What the
+  evidence supports: the file is seamless, and Chrome's native loop of
+  this gapless-tagged MP3 seeks in ~5 ms with no underflow.

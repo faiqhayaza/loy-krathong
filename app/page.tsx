@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Lang, ReactionId, Wish } from '@/lib/data';
 import { DESTINATIONS, REACTIONS, STAMP_ICON, flowerGlyph } from '@/lib/data';
-import { calendar, isOpenDay } from '@/lib/festival';
+import { calendar, defaultDestination, isOpenDay } from '@/lib/festival';
 import { shortDate, t } from '@/lib/i18n';
 import SkyCanvas from '@/components/SkyCanvas';
 import RiverCanvas from '@/components/RiverCanvas';
@@ -23,6 +23,9 @@ import WishWall from '@/components/WishWall';
 import SoundToggle from '@/components/SoundToggle';
 import { audio } from '@/lib/audio';
 import { useReactions } from '@/components/useReactions';
+import IdentityDialog from '@/components/IdentityDialog';
+import { getIdentity } from '@/lib/identity';
+import { recordEvent } from '@/lib/events';
 
 const FESTIVAL_AT = Date.UTC(2026, 10, 24, 12, 0, 0); // 19:00 Asia/Bangkok
 
@@ -119,7 +122,21 @@ export default function Page() {
     ...new Set([...load<string[]>('loy:visits', []), ...loadStamps()]),
   ]);
   const cal = calendar();
+  // Tonight's destination: the river's shader water tint follows it.
+  const riverDest = defaultDestination(cal);
   const { reacted, toggleReaction } = useReactions();
+  // Identity gate (D1, full first page): null = not yet decided — the
+  // gate renders on its own until the check runs, so the site is never
+  // visible, not even for a frame, to a visitor who has not passed it.
+  // null renders the gate on the server too, so SSR and the first client
+  // paint agree (no hydration mismatch, no flash of the river). Once the
+  // check runs, a stored identity opens the site; otherwise the gate
+  // stays and the site is not rendered at all.
+  // (The identity itself is read via getIdentity() when a chunk needs it.)
+  const [showIdentityGate, setShowIdentityGate] = useState<boolean | null>(null);
+  useEffect(() => {
+    setShowIdentityGate(!getIdentity());
+  }, []);
   const [myWishId, setMyWishId] = useState<string | null>(() =>
     typeof window === 'undefined' ? null : load<string | null>('loy:my-wish', null),
   );
@@ -168,7 +185,12 @@ export default function Page() {
     return () => clearInterval(id);
   }, [fetchWishes]);
 
-  // Reveal on scroll
+  // Reveal on scroll. The effect must also re-run when the identity
+  // gate closes: for a first-time visitor the page (and its .reveal
+  // sections) only renders after sign-in, long after `loading` flipped
+  // — with [loading] alone the observer was never attached and every
+  // section stayed at opacity 0. (Found while verifying Chunk C; the
+  // delivered tree has the same bug.)
   useEffect(() => {
     const els = document.querySelectorAll('.reveal');
     const io = new IntersectionObserver(
@@ -184,7 +206,7 @@ export default function Page() {
     );
     els.forEach((el) => io.observe(el));
     return () => io.disconnect();
-  }, [loading]);
+  }, [loading, showIdentityGate]);
 
   // Ambient audio: browsers block sound before the visitor interacts, so
   // the kalimba starts on the first pointerdown/keydown anywhere on the
@@ -213,7 +235,13 @@ export default function Page() {
 
   // Passport, per the Rules: visit first (recordVisit), then collect
   // (collectStamp) — and only while the destination's night is open.
+  // D1: a visit also records a `visit_place` event (ref = day number),
+  // the evidence the visit mission reads. It records even when the
+  // destination is already in `loy:visits` (grandfathered or re-tapped):
+  // recordEvent dedupes by day+kind+ref, so a repeat is a no-op.
   function visit(id: string) {
+    const d = DESTINATIONS.find((x) => x.id === id);
+    if (d && isOpenDay(cal, d.day)) recordEvent('visit_place', d.day);
     if (visits.includes(id)) return;
     const next = [...visits, id];
     setVisits(next);
@@ -259,6 +287,13 @@ export default function Page() {
   async function reactPinned(wish: Wish, reaction: ReactionId) {
     const counts = await toggleReaction(wish.id, reaction);
     if (counts) updateWishReactions(wish.id, counts);
+  }
+
+  // The gate is the whole first page: while it is up (or undecided),
+  // the site is not rendered at all — no hero, no passport, no river,
+  // no wall — and there is no way past it except signing up or signing in.
+  if (showIdentityGate !== false) {
+    return <IdentityDialog lang={lang} onDone={() => setShowIdentityGate(false)} />;
   }
 
   return (
@@ -425,6 +460,7 @@ export default function Page() {
                 highlightId={highlightId}
                 onHover={(wish, x, y) => setHover(wish ? { wish, x, y } : null)}
                 onSelect={(wish) => setPinned(wish)}
+                destinationId={riverDest.id}
               />
               <div className="river-bar">
                 {pending.length > 0 && (
@@ -435,7 +471,15 @@ export default function Page() {
                 )}
               </div>
               <div className="river-credit">
-                River photo: <a href="https://commons.wikimedia.org/wiki/File:Moonlight_over_the_Chagres_river_(17057830922).jpg" target="_blank" rel="noreferrer">Brian Gratwicke</a>, CC BY 2.0
+                River photograph: Wat Arun on the Chao Phraya, Bangkok —{' '}
+                <a
+                  href="https://commons.wikimedia.org/wiki/File:An_illuminated_ARUN_WAT_on_the_banks_of_the_Chao_Phraya_river_in_Bangkok_during_the_traditional_Loi_Krathong_festival_on_Nov.11_night..JPG"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Wikimedia Commons
+                </a>
+                , CC0
               </div>
               {wishes.length === 0 && !loading && (
                 <div className="river-empty">{s.riverEmpty}</div>

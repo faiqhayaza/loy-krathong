@@ -196,27 +196,38 @@ button, input, textarea { font: inherit; color: inherit; }
 @media (min-width: 960px) { .layout { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); } }
 .river-wrap { position: relative; border-radius: 20px; overflow: hidden; border: 1px solid var(--line-soft); background: #0a1030; }
 .river-wrap canvas { display: block; width: 100%; height: 480px; cursor: crosshair; }
-/* The river scene: canvas plus the Wat Arun SVG illustration layered over
-   the far bank. The overlay box keeps the SVG's own aspect ratio
-   (600/380), so the temple is never squashed, and it is sized and
-   placed so the temple's base (52.6% down the SVG) lands on the canvas
-   horizon (28% of the height) and its centre at 30% of the width — the
-   same spot the old canvas silhouette stood. On desktop the box is
-   wider and taller, so the prang reads at nearly twice its old size.
-   Pointer events pass through to the canvas below. */
+/* The river scene (design variant A, photo-forward): four layers,
+   bottom to top. (1) The night-graded Chao Phraya photograph, an <img>
+   cover-fit to the panel — object-position 50% keeps the temple (at
+   50% of the photo width) centred in the frame at desktop and mobile;
+   the panel is taller (relative) than the photo at every viewport the
+   site serves, so the photo's height always maps to the panel height
+   and its waterline stays at 67% of the panel. (2) The WebGL water
+   canvas: the shader paints only below the waterline, at partial
+   opacity, over the photograph's water. (3) The main canvas, in normal
+   flow so it sets the panel height, carrying the sky life, the water
+   overlays and the boats. (4) The name-tag canvas, above everything so
+   no tag is ever cut by the temple. The photograph and the water canvas
+   never take pointer input. */
 .river-scene { position: relative; }
-.temple-overlay {
-  position: absolute; left: -7%; width: 78%; aspect-ratio: 600 / 380; top: 10%;
+.river-scene .river-backdrop {
+  position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0;
+  object-fit: cover; object-position: 50% center; pointer-events: none;
+  user-select: none;
+}
+.river-scene canvas.river-water {
+  position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1;
   pointer-events: none;
 }
-@media (min-width: 960px) { .temple-overlay { left: -8.5%; width: 82%; top: -5%; } }
-.temple-overlay svg { width: 100%; height: 100%; display: block; }
+.river-scene > canvas:not(.river-water):not(.river-tags) {
+  position: relative; z-index: 2;
+}
 /* Name-tag canvas: same box as the main canvas (the .river-wrap canvas
-   rule sizes both), layered above the temple overlay so no tag is ever
-   cut by a prang. It never takes pointer input. */
+   rule sizes both), layered above everything so no tag is ever cut.
+   It never takes pointer input. */
 .river-scene canvas.river-tags {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  pointer-events: none;
+  z-index: 3; pointer-events: none;
 }
 .temple-window { animation: window-glow 3.2s ease-in-out infinite; }
 @keyframes window-glow { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
@@ -225,9 +236,10 @@ button, input, textarea { font: inherit; color: inherit; }
   position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between;
   gap: 8px; align-items: flex-start; pointer-events: none; z-index: 2;
 }
-/* Photo credit for the river photograph (CC BY 4.0 — the licence asks
-   for attribution where the photo is used). Tiny and muted, bottom
-   right over the dark near water; it never intercepts clicks. */
+/* Photo credit for the river photograph (CC0 1.0 — public-domain
+   dedication, so attribution is not required; credited anyway).
+   Tiny and muted, bottom right over the dark near water; it never
+   intercepts clicks. */
 .river-credit {
   position: absolute; right: 10px; bottom: 8px; z-index: 2;
   font-size: 10.5px; color: rgba(247, 241, 227, 0.45); pointer-events: none;
@@ -410,3 +422,40 @@ button, input, textarea { font: inherit; color: inherit; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
   .reveal { opacity: 1; transform: none; }
 }
+
+/* Identity gate (D1) — sign-up / sign-in, the whole first page: the
+   visitor sees only this until they pass it; the site is not rendered
+   behind it at all. */
+.id-gate {
+  min-height: 100dvh;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: radial-gradient(1200px 600px at 70% -10%, rgba(43, 53, 104, 0.55), transparent),
+    linear-gradient(180deg, #0a0e2a 0%, #070a1f 55%, #04061a 100%);
+}
+.id-card {
+  width: min(100%, 440px); max-height: calc(100dvh - 32px); overflow-y: auto;
+  background: var(--card-solid); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 24px 22px;
+  display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+.id-card h1 { font-size: 22px; color: var(--cream); line-height: 1.3; }
+.id-sub { color: var(--ink); font-size: 15px; line-height: 1.55; }
+.id-card .field > span { font-weight: 600; font-size: 14px; color: var(--cream); }
+.id-hint { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.id-error { color: #f2a18e; font-size: 14px; }
+.id-key-body { color: var(--ink); font-size: 15px; line-height: 1.6; }
+.id-key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 34px; font-weight: 700; letter-spacing: 0.14em; text-align: center;
+  color: var(--gold-soft); background: rgba(232, 179, 75, 0.1);
+  border: 1px dashed var(--gold); border-radius: 12px; padding: 14px 8px;
+  user-select: all;
+}
+.id-submit { width: 100%; justify-content: center; }
+.id-switch {
+  background: none; border: 0; cursor: pointer; padding: 4px;
+  color: var(--gold-soft); font-size: 14px; font-weight: 600;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+@media (max-width: 480px) { .id-key { font-size: 28px; letter-spacing: 0.1em; } }
