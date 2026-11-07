@@ -14,30 +14,36 @@
 // base, a long shaft whose outline curves inward as it rises — the concave
 // lotus-bud profile — a bud dome and a trident finial, with four smaller
 // satellite prangs stepping down on either side. Nothing is flat black:
-// the stone is a deep indigo-blue with a porcelain-mosaic pattern (small
-// light and dark tiles, as on the real prang), arched niches glow warm
-// gold, and the tiered sala roofs carry a gold eave line.
+// the stone is a pale blue-grey/lavender with a porcelain-mosaic pattern
+// (small light and dark tiles, as on the real prang) that reads at
+// desktop size, arched niches glow warm gold, a thick gold rim lights
+// both shaft edges and the stepped base, and the tiered sala roofs carry
+// a bright gold eave line.
 
 export default function WatArunSvg() {
   return (
     <svg
       viewBox="0 0 600 380"
-      preserveAspectRatio="none"
+      preserveAspectRatio="xMidYMid meet"
       aria-hidden="true"
       focusable="false"
     >
       <defs>
-        {/* Porcelain mosaic: small tiles in slightly varied tones, the
-            pale ones a hint of the real prang's porcelain. */}
+        {/* Porcelain mosaic: small tiles in clearly varied tones — the
+            stone itself is now genuinely pale blue-grey/lavender
+            (#8b93bd base), lit enough to read at desktop size against
+            the dark sky. The old deep indigo (#2b3568 with faint tiles)
+            rendered as a dark silhouette with invisible detail — check
+            the rendered colours in a screenshot, not the hex in code. */}
         <pattern id="wat-mosaic" width="7" height="7" patternUnits="userSpaceOnUse">
-          <rect width="7" height="7" fill="#20294f" />
-          <rect x="0" y="0" width="3.2" height="3.2" fill="#28315c" />
-          <rect x="3.5" y="3.5" width="3.2" height="3.2" fill="#1b2342" />
-          <rect x="3.5" y="0" width="3.2" height="3.2" fill="#d9c48f" opacity="0.16" />
-          <rect x="0" y="3.5" width="3.2" height="3.2" fill="#8b9cc9" opacity="0.22" />
+          <rect width="7" height="7" fill="#8b93bd" />
+          <rect x="0" y="0" width="3.2" height="3.2" fill="#9aa1cc" />
+          <rect x="3.5" y="3.5" width="3.2" height="3.2" fill="#767eae" />
+          <rect x="3.5" y="0" width="3.2" height="3.2" fill="#d9c48f" opacity="0.55" />
+          <rect x="0" y="3.5" width="3.2" height="3.2" fill="#c6cbe8" opacity="0.55" />
         </pattern>
         <radialGradient id="wat-glow" cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0%" stopColor="#f6d36b" stopOpacity="0.14" />
+          <stop offset="0%" stopColor="#f6d36b" stopOpacity="0.24" />
           <stop offset="100%" stopColor="#f6d36b" stopOpacity="0" />
         </radialGradient>
         {/* The reflection fades as it sinks: bright at the bank, gone by
@@ -58,22 +64,48 @@ export default function WatArunSvg() {
             d="M -45 0 L -45 -22 L -36 -22 L -36 -44 L -28 -44 L -28 -65 L -22.5 -65
                Q -9 -106 -5.9 -144 Q -4 -152 0 -159 Q 4 -152 5.9 -144 Q 9 -106 22.5 -65
                L 28 -65 L 28 -44 L 36 -44 L 36 -22 L 45 -22 L 45 0 Z"
-            fill="#1c2447"
+            fill="#7d86b3"
           />
           <path
             d="M -45 0 L -45 -22 L -36 -22 L -36 -44 L -28 -44 L -28 -65 L -22.5 -65
                Q -9 -106 -5.9 -144 Q -4 -152 0 -159 Q 4 -152 5.9 -144 Q 9 -106 22.5 -65
                L 28 -65 L 28 -44 L 36 -44 L 36 -22 L 45 -22 L 45 0 Z"
             fill="url(#wat-mosaic)"
-            opacity="0.5"
+            opacity="0.85"
           />
-          {/* gold rim light on the moonlit edge */}
+          {/* defining gold rim light: a soft halo first, then a thick
+              bright edge on BOTH sides of the shaft and down the stepped
+              base — the old single 1.5px line on one edge was invisible
+              at desktop size */}
           <path
-            d="M 22.5 -65 Q 9 -106 5.9 -144 Q 4 -152 0 -159"
+            d="M 22.5 -65 Q 9 -106 5.9 -144 Q 4 -152 0 -159 Q -4 -152 -5.9 -144 Q -9 -106 -22.5 -65"
             fill="none"
-            stroke="#f6d36b"
-            strokeOpacity="0.3"
-            strokeWidth="1"
+            stroke="#ffd97a"
+            strokeOpacity="0.22"
+            strokeWidth="6"
+            strokeLinecap="round"
+          />
+          <path
+            d="M 22.5 -65 Q 9 -106 5.9 -144 Q 4 -152 0 -159 Q -4 -152 -5.9 -144 Q -9 -106 -22.5 -65"
+            fill="none"
+            stroke="#ffdf8a"
+            strokeOpacity="0.95"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+          <path
+            d="M -45 0 L -45 -22 L -36 -22 L -36 -44 L -28 -44 L -28 -65"
+            fill="none"
+            stroke="#ffdf8a"
+            strokeOpacity="0.8"
+            strokeWidth="1.8"
+          />
+          <path
+            d="M 45 0 L 45 -22 L 36 -22 L 36 -44 L 28 -44 L 28 -65"
+            fill="none"
+            stroke="#ffdf8a"
+            strokeOpacity="0.8"
+            strokeWidth="1.8"
           />
           {/* arched niches, warm and lit */}
           <path d="M -3.5 -78 L -3.5 -86 Q 0 -89.5 3.5 -86 L 3.5 -78 Z" fill="#f6d36b" />
@@ -88,8 +120,8 @@ export default function WatArunSvg() {
             fill="none"
           />
           {/* miniature spires on the top terrace corners */}
-          <path d="M -31 -65 L -28 -72 L -25 -65 Z" fill="#1c2447" />
-          <path d="M 25 -65 L 28 -72 L 31 -65 Z" fill="#1c2447" />
+          <path d="M -31 -65 L -28 -72 L -25 -65 Z" fill="#7d86b3" />
+          <path d="M 25 -65 L 28 -72 L 31 -65 Z" fill="#7d86b3" />
         </g>
       </defs>
 
@@ -97,8 +129,8 @@ export default function WatArunSvg() {
       <ellipse cx="283" cy="150" rx="180" ry="120" fill="url(#wat-glow)" />
 
       {/* base platform, with its own small lit niches */}
-      <rect x="55" y="197" width="470" height="6" fill="#10152c" />
-      <rect x="55" y="197" width="470" height="1" fill="#f6d36b" opacity="0.25" />
+      <rect x="55" y="197" width="470" height="6" fill="#2e3766" />
+      <rect x="55" y="197" width="470" height="1" fill="#f6d36b" opacity="0.8" />
       <g fill="#f6d36b">
         <rect className="temple-window" x="120" y="199" width="2.4" height="3.4" style={{ animationDelay: '0s' }} />
         <rect className="temple-window" x="180" y="199" width="2.4" height="3.4" style={{ animationDelay: '0.9s' }} />
@@ -109,7 +141,7 @@ export default function WatArunSvg() {
       </g>
 
       {/* tiered sala roofs at the flanks, eaves flicking up, gold edge */}
-      <g fill="#151b36" stroke="#f6d36b" strokeOpacity="0.35" strokeWidth="0.8">
+      <g fill="#3a4376" stroke="#f6d36b" strokeOpacity="0.85" strokeWidth="1.4">
         <path d="M 0 200 Q 3 186 15.2 185 L 64.8 185 Q 77 186 80 200 Z" />
         <path d="M 15.2 185 Q 17.6 172.5 26.4 171 L 53.6 171 Q 62.4 172.5 64.8 185 Z" />
         <path d="M 36 171 L 40 152.5 L 44 171 Z" />

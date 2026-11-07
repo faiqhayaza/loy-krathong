@@ -12,17 +12,28 @@
 // toward the spire. Five quick clicks anywhere on the
 // canvas launch a short fireworks show — a hidden preview for the night.
 //
-// Below it all, dark water with a living current — long, uneven flow
-// lines drifting downstream — an uneven far bank with reeds at the
-// water's edge, moonlight that breaks and reforms on the surface, and
-// one floating krathong per wish, name on a small tag above it. Hover
-// (or tap) reads the wish; a click pins it open.
+// Below it all, real water: a photograph of a moonlit river, graded
+// to the site's navy/gold palette and shipped locally
+// (public/river-night.jpg — "Moonlight over the Chagres river", Brian
+// Gratwicke, CC BY 2.0, see the credit under the river). Two rounds of
+// hand-drawn water never read as a river in a still frame, so the
+// photo carries the realism now — above all its real moon glitter
+// path, which runs the full depth of the water and is shifted in code
+// to sit under the canvas moon. The canvas layers on top are the life
+// on it — the far bank with reeds at the water's edge, a soft glow
+// where the temple meets the water, ripple arcs and moonlight that
+// break and reform on the surface (restored in fix round 4: the
+// photograph's own water is near-black away from the moon path, so
+// the lower two-thirds need the drawn texture to read as water in a
+// still frame), and one floating krathong per wish, name on a small
+// tag above it. Hover (or tap) reads the wish; a click pins it open.
 
 'use client';
 
 import { useEffect, useRef } from 'react';
 import type { Lang, Wish } from '@/lib/data';
 import { boatColors, flameColor, flowerGlyph } from '@/lib/data';
+import { audio } from '@/lib/audio';
 import WatArunSvg from './WatArunSvg';
 
 interface Sprite {
@@ -39,9 +50,10 @@ interface Sprite {
 interface Star { x: number; y: number; r: number; phase: number; speed: number }
 interface Cloud { x: number; y: number; s: number }
 interface BankPt { x: number; y: number }
-interface Tuft { x: number; y: number; h: number; lean: number; blades: number }
-interface FlowLine { x: number; y: number; len: number; spd: number; alpha: number; phase: number }
+interface ReedBlade { h: number; lean: number; w: number; head: boolean }
+interface Tuft { x: number; y: number; blades: ReedBlade[] }
 interface Shimmer { x: number; y: number; w: number; phase: number; speed: number }
+interface RippleArc { x: number; y: number; w: number; sag: number; base: number; phase: number; speed: number; gold: boolean; twin: boolean }
 interface SwiftBird { dx: number; dy: number; phase: number }
 interface SwiftFlock {
   birds: SwiftBird[];
@@ -143,7 +155,7 @@ function fallbackTargets(elapsed: number): { rain: number; cloud: number; wind: 
 }
 
 interface WeatherState {
-  mode: 'live' | 'fallback';
+  mode: 'live' | 'fallback' | 'forced';
   rain: number; // target rain intensity 0–1
   cloud: number; // target cloud cover 0–100
   wind: number; // target wind strength ~0.15 (calm) to ~1.4 (strong)
@@ -158,6 +170,15 @@ interface WeatherState {
 
 export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSelect }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
+  // Second canvas, layered ABOVE the temple SVG overlay: the name
+  // tags are drawn here, never on the main canvas. A far-row boat
+  // drifts right under the prangs, and a tag painted on the main
+  // canvas is cut by the overlay sitting on top of it — on the tag
+  // canvas every submitter's name stays fully readable, which is the
+  // point of the river. It is purely visual (pointer events pass
+  // through to the main canvas below) and it is sized and cleared in
+  // lockstep with the main canvas.
+  const tagRef = useRef<HTMLCanvasElement>(null);
   const wishesRef = useRef(wishes);
   wishesRef.current = wishes;
   const spritesRef = useRef<Map<string, Sprite>>(new Map());
@@ -173,12 +194,36 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     rain: 0, cloud: 15, wind: 0.3, dirX: -0.6, fog: false, storm: false,
     rainShown: 0, cloudShown: 15, windShown: 0.3, fogShown: 0,
   });
+  // Reduced motion: the scene is one static frame drawn inside the
+  // effect below, so a second effect (after it) redraws that frame
+  // whenever the wishes change — see the note there.
+  const redrawRef = useRef<(() => void) | null>(null);
 
   // Live Bangkok weather, client-side. Never blocks the first paint: the
   // scene renders immediately on the gentle default above and adjusts
   // when the data arrives. Nothing in the UI mentions the source.
   useEffect(() => {
+    // DEV-ONLY: ?cloud=NN forces the cloud cover (0–100) so the
+    // overcast rendering can be checked without live weather — e.g.
+    // ?cloud=97 for a near-total overcast. It only affects this
+    // browser's view; there is no UI for it and nothing else reads it.
+    // The live fetch never overrides it while it is set.
+    const forced = new URLSearchParams(window.location.search).get('cloud');
+    const forcedCloud =
+      forced !== null && /^\d+$/.test(forced)
+        ? Math.max(0, Math.min(100, Number(forced)))
+        : null;
+    if (forcedCloud !== null) {
+      const wthr = weatherRef.current;
+      wthr.mode = 'forced';
+      wthr.cloud = forcedCloud;
+      wthr.cloudShown = forcedCloud;
+      wthr.rain = 0;
+      wthr.fog = false;
+      wthr.storm = false;
+    }
     async function load() {
+      if (weatherRef.current.mode === 'forced') return;
       const ctrl = new AbortController();
       const timeout = window.setTimeout(() => ctrl.abort(), 8000);
       try {
@@ -231,10 +276,26 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    // The tag canvas may be absent in an old render — if it is, the
+    // tags fall back to the main canvas (the old behaviour) rather
+    // than disappearing.
+    const tagCanvas = tagRef.current;
+    const tagCtx = tagCanvas?.getContext('2d') ?? null;
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const startTime = performance.now();
     let raf = 0;
+    // The water is a real photograph (public/river-night.jpg), loaded
+    // once. Until it arrives the old gradient stands in, so the first
+    // paint is never blank; the animation loop picks the photo up the
+    // moment it loads, and a reduced-motion frame redraws once on load.
+    const waterImg = new Image();
+    let waterImgLoaded = false;
+    waterImg.onload = () => {
+      waterImgLoaded = true;
+      if (reduced && w > 0) draw(1200);
+    };
+    waterImg.src = '/river-night.jpg';
     let w = 0;
     let h = 0;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -245,8 +306,8 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     const drops: RainDrop[] = [];
     const bankPts: BankPt[] = [];
     const tufts: Tuft[] = [];
-    const flows: FlowLine[] = [];
     const shimmers: Shimmer[] = [];
+    const ripples: RippleArc[] = [];
     let flocks: SwiftFlock[] = [];
     let meteors: Meteor[] = [];
     let rings: RippleRing[] = [];
@@ -303,15 +364,18 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         s = (s * 16807) % 2147483647;
         return s / 2147483647;
       };
-      // 7 puffs, denser in the middle, soft at the edges
+      // 7 puffs, denser in the middle, soft at the edges. Night clouds
+      // are lit by the moon, so they are PALER than the sky — the old
+      // sprites were dark navy on a dark navy sky and read as nothing
+      // at all, which is why no cloud ever showed up.
       for (let i = 0; i < 7; i++) {
         const px = 40 + rnd() * 160;
         const py = 45 + (rnd() - 0.5) * 30;
         const pr = 26 + rnd() * 34;
         const grad = g.createRadialGradient(px, py, pr * 0.1, px, py, pr);
-        grad.addColorStop(0, 'rgba(32, 40, 78, 0.85)');
-        grad.addColorStop(0.7, 'rgba(32, 40, 78, 0.45)');
-        grad.addColorStop(1, 'rgba(32, 40, 78, 0)');
+        grad.addColorStop(0, 'rgba(148, 162, 214, 0.6)');
+        grad.addColorStop(0.7, 'rgba(148, 162, 214, 0.3)');
+        grad.addColorStop(1, 'rgba(148, 162, 214, 0)');
         g.fillStyle = grad;
         g.beginPath();
         g.arc(px, py, pr, 0, Math.PI * 2);
@@ -323,8 +387,8 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         const py = 38 + rnd() * 14;
         const pr = 20 + rnd() * 18;
         const grad = g.createRadialGradient(px, py, pr * 0.1, px, py, pr);
-        grad.addColorStop(0, 'rgba(150, 165, 220, 0.22)');
-        grad.addColorStop(1, 'rgba(150, 165, 220, 0)');
+        grad.addColorStop(0, 'rgba(205, 214, 248, 0.4)');
+        grad.addColorStop(1, 'rgba(205, 214, 248, 0)');
         g.fillStyle = grad;
         g.beginPath();
         g.arc(px, py, pr, 0, Math.PI * 2);
@@ -372,45 +436,84 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           y: horizon() + Math.sin(i * 1.7) * 2.2 + Math.sin(i * 0.6 + 2) * 2.5,
         });
       }
-      // Dark reeds and grass tufts at the water's edge, kept clear of the
-      // temple's centre so they never crowd it.
+      // Dark reeds and grass at the water's edge, kept clear of the
+      // temple's centre so they never crowd it. They grow in clusters
+      // with gaps between them — not a uniform comb — and every blade
+      // has its own height, lean and thickness; about a third carry a
+      // seed head, so they read as reeds, not matchsticks.
       tufts.length = 0;
-      for (let i = 0; i < 16; i++) {
-        const x = Math.random() * w;
-        if (x > w * 0.16 && x < w * 0.44) continue;
-        tufts.push({
-          x,
-          y: horizon() + Math.random() * 3,
-          h: 5 + Math.random() * 9,
-          lean: (Math.random() - 0.5) * 4,
-          blades: 3 + Math.floor(Math.random() * 3),
-        });
+      let clusters = 0;
+      let guard = 0;
+      while (clusters < 6 && guard < 40) {
+        guard += 1;
+        const cx = Math.random() * w;
+        if (cx > w * 0.16 && cx < w * 0.44) continue;
+        clusters += 1;
+        const tuftCount = 2 + Math.floor(Math.random() * 3);
+        for (let k = 0; k < tuftCount; k++) {
+          const blades: ReedBlade[] = [];
+          const n = 3 + Math.floor(Math.random() * 4);
+          for (let b = 0; b < n; b++) {
+            blades.push({
+              h: 11 + Math.random() * 19,
+              lean: (Math.random() - 0.5) * 16,
+              w: 1.4 + Math.random() * 1.2,
+              head: Math.random() < 0.35,
+            });
+          }
+          tufts.push({
+            x: cx + (Math.random() - 0.5) * 26,
+            y: horizon() + Math.random() * 3,
+            blades,
+          });
+        }
       }
-      // The living current: long, uneven flow lines, each with its own
-      // length, speed and brightness — never a set of uniform stripes.
-      flows.length = 0;
-      for (let i = 0; i < 16; i++) {
-        flows.push({
-          x: Math.random() * w,
-          y: h * (0.32 + Math.random() * 0.6),
-          len: 40 + Math.random() * 130,
-          spd: 0.12 + Math.random() * 0.3,
-          alpha: 0.03 + Math.random() * 0.06,
-          phase: Math.random() * Math.PI * 2,
-        });
-      }
-      // Moonlight on the water: short dashes that break and reform
-      // instead of a rigid column — each has its own phase, so the path
-      // is never the same shape twice.
+      // Moonlight on the water: a broad, broken path over the
+      // photograph's own moon glitter, which it reinforces rather than
+      // replaces. Forty dashes, wider toward the viewer, spread over
+      // the FULL depth of the water — the old 14 faint dashes clustered
+      // in the top half were invisible, and a moon with no reflection
+      // reads as a mistake. Each has its own phase and a sideways
+      // wobble, and the glow under the moon is a real column now, not
+      // a whisper.
       shimmers.length = 0;
-      for (let i = 0; i < 18; i++) {
-        const depth = Math.random();
+      for (let i = 0; i < 40; i++) {
+        const depth = Math.pow(Math.random(), 0.7);
         shimmers.push({
-          x: w * 0.78 + (Math.random() - 0.5) * (14 + depth * 70),
+          x: w * 0.78 + (Math.random() - 0.5) * (30 + depth * 190),
+          // brightest near the far bank, breaking up toward the
+          // viewer — never a ladder of bars, never only at the top
           y: h * (0.3 + depth * 0.62),
-          w: 8 + Math.random() * 26,
+          w: 20 + Math.random() * 90,
           phase: Math.random() * Math.PI * 2,
           speed: 0.4 + Math.random() * 0.9,
+        });
+      }
+      // Ripple arcs over the photograph — the lower water's texture.
+      // The photograph's own water is near-black away from the moon
+      // path, so without these the lower two-thirds are a void in a
+      // still frame. Shallow upward curves, a pale highlight with a
+      // dark shadow twin below on half of them; 38% cluster inside
+      // the moon column, where the light breaks the water brightest.
+      // They pulse gently but never fade below 60% of base alpha, so
+      // a frozen frame still shows wave texture, and they run the
+      // whole depth — including across the top, so there is no
+      // horizontal seam where any reflection band ends.
+      ripples.length = 0;
+      const moonCX = w * 0.78;
+      for (let i = 0; i < 90; i++) {
+        const inMoon = Math.random() < 0.38;
+        const depth = Math.random();
+        ripples.push({
+          x: inMoon ? moonCX + (Math.random() - 0.5) * 260 : Math.random() * w,
+          y: horizon() + 12 + depth * (h - horizon() - 24),
+          w: 30 + Math.random() * 90 + depth * 30,
+          sag: 2 + Math.random() * 3,
+          base: 0.1 + Math.random() * 0.16,
+          phase: Math.random() * Math.PI * 2,
+          speed: 0.3 + Math.random() * 0.8,
+          gold: inMoon,
+          twin: Math.random() < 0.5,
         });
       }
     }
@@ -425,8 +528,10 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           const fresh = wish.id === highlightRef.current;
           sprites.set(wish.id, {
             id: wish.id,
-            // New krathongs splash in at the near bank; the rest spread out.
-            x: fresh ? w * (0.3 + Math.random() * 0.4) : Math.random() * w,
+            // New krathongs splash in at the near bank; the rest spread
+            // out — inset from the panel edges, so a boat never spawns
+            // half-clipped with its name tag cut off.
+            x: fresh ? w * (0.3 + Math.random() * 0.4) : w * (0.09 + Math.random() * 0.82),
             row: fresh ? ROWS - 1 : row,
             speed: 0.08 + Math.random() * 0.16,
             phase: Math.random() * Math.PI * 2,
@@ -448,6 +553,13 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       canvas!.width = Math.max(1, Math.round(w * dpr));
       canvas!.height = Math.max(1, Math.round(h * dpr));
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // The tag canvas shares the main canvas's box exactly, so a tag
+      // drawn at a sprite's coordinates lands on its boat.
+      if (tagCanvas && tagCtx) {
+        tagCanvas.width = Math.max(1, Math.round(w * dpr));
+        tagCanvas.height = Math.max(1, Math.round(h * dpr));
+        tagCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
       seedSky();
       syncSprites();
       draw(performance.now());
@@ -542,6 +654,10 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     }
 
     function burst(r: Rocket, now: number) {
+      // One boom per burst (automatic show and 5-click preview alike).
+      // Throttled inside lib/audio (~1 per 0.8 s) and gated on the sound
+      // preference, so the call here is unconditional.
+      audio.playFirework();
       const room = Math.max(0, 500 - particles.length);
       const count = Math.min(96 + Math.floor(Math.random() * 44), room);
       for (let i = 0; i < count; i++) {
@@ -563,6 +679,34 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     }
 
     // --- krathongs (unchanged behaviour) ----------------------------------
+    // Name tag for one boat, drawn on the context passed in — normally
+    // the tag canvas above the temple overlay (see tagRef), so a far-row
+    // tag is never cut by a prang. Clamped inside the canvas, so a boat
+    // drifting in from an edge never has its tag cut off (the tag centre
+    // follows the clamp, so the name stays inside the tag).
+    function drawNameTag(g: CanvasRenderingContext2D, wish: Wish, s: Sprite, y: number, sc: number) {
+      const name = wish.name.trim() || (langRef.current === 'th' ? 'ใครคนหนึ่งในกรุงเทพฯ' : 'Someone in Bangkok');
+      const font = `600 ${Math.round(12 * sc + 1)}px Prompt, Sarabun, sans-serif`;
+      g.font = font;
+      const tw = g.measureText(name).width;
+      const tagW = tw + 16;
+      const tagH = 20;
+      const tagCx = Math.max(tagW / 2 + 6, Math.min(w - tagW / 2 - 6, s.x));
+      const tagX = tagCx - tagW / 2;
+      const tagY = y - 52 * sc - tagH;
+      g.fillStyle = 'rgba(7, 10, 31, 0.72)';
+      g.beginPath();
+      g.roundRect(tagX, tagY, tagW, tagH, 10);
+      g.fill();
+      g.strokeStyle = 'rgba(232, 179, 75, 0.55)';
+      g.lineWidth = 1;
+      g.stroke();
+      g.fillStyle = '#f7f1e3';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(name, tagCx, tagY + tagH / 2 + 0.5);
+    }
+
     function drawKrathong(wish: Wish, s: Sprite, t: number) {
       const y = rowY(s.row) + Math.sin(t / 1100 + s.phase) * 3;
       const sc = s.scale;
@@ -642,26 +786,8 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         ctx!.fill();
       }
 
-      // name tag
-      const name = wish.name.trim() || (langRef.current === 'th' ? 'ใครคนหนึ่งในกรุงเทพฯ' : 'Someone in Bangkok');
-      const font = `600 ${Math.round(12 * sc + 1)}px Prompt, Sarabun, sans-serif`;
-      ctx!.font = font;
-      const tw = ctx!.measureText(name).width;
-      const tagW = tw + 16;
-      const tagH = 20;
-      const tagX = s.x - tagW / 2;
-      const tagY = y - 52 * sc - tagH;
-      ctx!.fillStyle = 'rgba(7, 10, 31, 0.72)';
-      ctx!.beginPath();
-      ctx!.roundRect(tagX, tagY, tagW, tagH, 10);
-      ctx!.fill();
-      ctx!.strokeStyle = 'rgba(232, 179, 75, 0.55)';
-      ctx!.lineWidth = 1;
-      ctx!.stroke();
-      ctx!.fillStyle = '#f7f1e3';
-      ctx!.textAlign = 'center';
-      ctx!.textBaseline = 'middle';
-      ctx!.fillText(name, s.x, tagY + tagH / 2 + 0.5);
+      // (the name tag is drawn separately, on the tag canvas above the
+      // temple overlay — see the krathong pass in draw())
     }
 
     function draw(t: number) {
@@ -860,66 +986,157 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       }
       ctx!.globalAlpha = 1;
 
-      // water — darker on the far side, slightly lighter toward the near
-      // water, and fading into darkness at the very bottom, where the
-      // near bank is. Dark enough throughout that the name tags stay
-      // readable.
-      const water = ctx!.createLinearGradient(0, skyH, 0, h);
-      water.addColorStop(0, '#0b1030');
-      water.addColorStop(0.45, '#101838');
-      water.addColorStop(0.8, '#0d1338');
-      water.addColorStop(1, '#04060f');
-      ctx!.fillStyle = water;
-      ctx!.fillRect(0, skyH, w, h - skyH);
+      // water — a real photograph of a moonlit river
+      // (public/river-night.jpg), cover-fit into the water rect. The
+      // photo is the water now: its own moon glitter path, ripple
+      // texture and fall into darkness are what make a still frame read
+      // as a river. Until it loads, the old gradient stands in. The
+      // photo's moon path sits at PATH_FRAC of the asset width, so the
+      // draw is shifted horizontally to land that path under the canvas
+      // moon (0.78w) at any viewport — clamped so the photo still
+      // covers the rect. Without the shift the path and the moon
+      // disagree by up to a quarter of the panel. A faint navy wash
+      // seats the photo in the scene with the drawn sky, deeper toward
+      // the near water; under a heavy overcast a veil dims the water
+      // the way the sky is veiled.
+      const waterH = h - skyH;
+      // The photo's moon glitter path, measured in the graded asset
+      // (brightest 100px column band, centre x 1375 of 2200).
+      const PATH_FRAC = 0.625;
+      if (waterImgLoaded) {
+        const iw = waterImg.naturalWidth;
+        const ih = waterImg.naturalHeight;
+        const scale = Math.max(w / iw, waterH / ih);
+        const dw = iw * scale;
+        const dh = ih * scale;
+        let dx = w * 0.78 - PATH_FRAC * dw;
+        dx = Math.max(w - dw, Math.min(0, dx));
+        ctx!.drawImage(waterImg, dx, skyH + (waterH - dh) / 2, dw, dh);
+      } else {
+        const water = ctx!.createLinearGradient(0, skyH, 0, h);
+        water.addColorStop(0, '#2b3563');
+        water.addColorStop(0.13, '#232c56');
+        water.addColorStop(0.17, '#1a2348');
+        water.addColorStop(0.46, '#141c3e');
+        water.addColorStop(0.52, '#0e1432');
+        water.addColorStop(0.78, '#080d26');
+        water.addColorStop(1, '#03040c');
+        ctx!.fillStyle = water;
+        ctx!.fillRect(0, skyH, w, waterH);
+      }
+      const seat = ctx!.createLinearGradient(0, skyH, 0, h);
+      seat.addColorStop(0, 'rgba(10, 16, 48, 0.08)');
+      seat.addColorStop(1, 'rgba(3, 4, 12, 0.16)');
+      ctx!.fillStyle = seat;
+      ctx!.fillRect(0, skyH, w, waterH);
+      if (overcast > 0.01) {
+        ctx!.fillStyle = `rgba(24, 30, 62, ${(overcast * 0.22).toFixed(3)})`;
+        ctx!.fillRect(0, skyH, w, waterH);
+      }
 
       // the far bank: a low, uneven shoreline, not a straight strip —
-      // dark reeds and grass tufts stand at the water's edge
-      ctx!.fillStyle = '#05070f';
+      // dark reeds and grass stand at the water's edge, and a faint
+      // waterline catches the light along the shore
+      ctx!.fillStyle = '#070a18';
       ctx!.beginPath();
       ctx!.moveTo(0, skyH + 8);
       for (const p of bankPts) ctx!.lineTo(p.x, p.y);
       ctx!.lineTo(w, skyH + 8);
       ctx!.closePath();
       ctx!.fill();
-      ctx!.strokeStyle = 'rgba(5, 7, 15, 0.9)';
-      ctx!.lineWidth = 1.4;
+      ctx!.strokeStyle = 'rgba(150, 170, 220, 0.14)';
+      ctx!.lineWidth = 1;
+      ctx!.beginPath();
+      ctx!.moveTo(0, bankPts[0]?.y ?? skyH);
+      for (const p of bankPts) ctx!.lineTo(p.x, p.y);
+      ctx!.stroke();
       for (const tf of tufts) {
-        for (let b = 0; b < tf.blades; b++) {
-          const bx = tf.x + (b - (tf.blades - 1) / 2) * 2.2;
-          const tipX = bx + tf.lean + (b - (tf.blades - 1) / 2) * 1.6;
+        for (let b = 0; b < tf.blades.length; b++) {
+          const bl = tf.blades[b];
+          const bx = tf.x + (b - (tf.blades.length - 1) / 2) * 3;
+          const tipX = bx + bl.lean + (b - (tf.blades.length - 1) / 2) * 2.4;
+          const tipY = tf.y - bl.h;
+          ctx!.strokeStyle = 'rgba(10, 23, 18, 0.95)';
+          ctx!.lineWidth = bl.w;
           ctx!.beginPath();
           ctx!.moveTo(bx, tf.y + 2);
-          ctx!.quadraticCurveTo(bx + tf.lean * 0.4, tf.y - tf.h * 0.6, tipX, tf.y - tf.h);
+          ctx!.quadraticCurveTo(bx + bl.lean * 0.45, tf.y - bl.h * 0.6, tipX, tipY);
           ctx!.stroke();
+          if (bl.head) {
+            // a cattail seed head on the tip
+            ctx!.fillStyle = 'rgba(12, 20, 14, 0.95)';
+            ctx!.beginPath();
+            ctx!.ellipse(tipX, tipY - 2, 1.8, 4.5, bl.lean * 0.03, 0, Math.PI * 2);
+            ctx!.fill();
+          }
         }
       }
 
-      // temple glow reflected just below the bank
-      for (let i = 0; i < 8; i++) {
-        const yy = skyH + 6 + i * 5;
-        const spread = 26 + i * 9;
-        const a = 0.05 + 0.05 * Math.abs(Math.sin(t / 900 + i * 1.7));
+      // the temple's reflection: a soft glow column under the bank,
+      // fading with depth — never hard lines. The photograph's water
+      // already carries its own reflections, and drawn fan lines on
+      // top of them read as little gold fans.
+      const tGlow = ctx!.createLinearGradient(0, skyH, 0, skyH + 110);
+      tGlow.addColorStop(0, 'rgba(246, 211, 107, 0.05)');
+      tGlow.addColorStop(1, 'rgba(246, 211, 107, 0)');
+      ctx!.fillStyle = tGlow;
+      ctx!.fillRect(templeX() - 70, skyH, 140, 110);
+
+      // moonlight on the water — a real column under the moon, over
+      // the photograph's own glitter path, which it reinforces: a
+      // wide soft glow, then dashes that break and reform down the
+      // full depth of the water, each with its own phase and a
+      // sideways wobble. Fainter under a heavy overcast, like the
+      // veiled moon itself.
+      const moonX = w * 0.78;
+      const glowCol = ctx!.createLinearGradient(moonX - 130, 0, moonX + 130, 0);
+      glowCol.addColorStop(0, 'rgba(246, 211, 107, 0)');
+      glowCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.1 * (1 - overcast * 0.6)).toFixed(3)})`);
+      glowCol.addColorStop(1, 'rgba(246, 211, 107, 0)');
+      ctx!.fillStyle = glowCol;
+      ctx!.fillRect(moonX - 130, skyH, 260, h - skyH);
+      const washCol = ctx!.createLinearGradient(moonX - 240, 0, moonX + 240, 0);
+      washCol.addColorStop(0, 'rgba(246, 211, 107, 0)');
+      washCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.03 * (1 - overcast * 0.6)).toFixed(3)})`);
+      washCol.addColorStop(1, 'rgba(246, 211, 107, 0)');
+      ctx!.fillStyle = washCol;
+      ctx!.fillRect(moonX - 240, skyH, 480, h - skyH);
+      for (const sh of shimmers) {
+        const tw = 0.35 + 0.65 * Math.abs(Math.sin((t / 1000) * sh.speed + sh.phase));
+        const a = (0.08 + 0.2 * tw) * (1 - overcast * 0.5);
+        const wx = sh.x + Math.sin((t / 1300) * sh.speed + sh.phase) * 7;
         ctx!.strokeStyle = `rgba(246, 211, 107, ${a.toFixed(3)})`;
-        ctx!.lineWidth = 1.2;
+        ctx!.lineWidth = 2;
         ctx!.beginPath();
-        ctx!.moveTo(templeX() - spread / 2 + Math.sin(t / 1400 + i) * 4, yy);
-        ctx!.lineTo(templeX() + spread / 2 + Math.sin(t / 1400 + i) * 4, yy);
+        ctx!.moveTo(wx - sh.w / 2, sh.y);
+        ctx!.lineTo(wx + sh.w / 2, sh.y);
         ctx!.stroke();
       }
 
-      // moonlight on the water — short dashes that break and reform,
-      // never a rigid column: each has its own phase, so the path is
-      // never the same shape twice. Fainter under a heavy overcast, like
-      // the veiled moon itself.
-      for (const sh of shimmers) {
-        const tw = 0.35 + 0.65 * Math.abs(Math.sin((t / 1000) * sh.speed + sh.phase));
-        const a = (0.04 + 0.09 * tw) * (1 - overcast * 0.5);
-        ctx!.strokeStyle = `rgba(246, 211, 107, ${a.toFixed(3)})`;
-        ctx!.lineWidth = 1.4;
+      // ripple arcs over the photograph — the lower water's texture
+      // (see the seed comment). They never fade below 60% of base
+      // alpha, so a frozen frame still shows wave texture; fainter
+      // under a heavy overcast, like the rest of the moonlight.
+      const arcDim = 1 - overcast * 0.5;
+      for (const rp of ripples) {
+        const tw = 0.6 + 0.4 * Math.abs(Math.sin((t / 1000) * rp.speed + rp.phase));
+        const a = rp.base * tw * arcDim;
+        const wx = rp.x + Math.sin((t / 1600) * rp.speed + rp.phase) * 5;
+        ctx!.strokeStyle = rp.gold
+          ? `rgba(246, 211, 107, ${a.toFixed(3)})`
+          : `rgba(205, 214, 248, ${a.toFixed(3)})`;
+        ctx!.lineWidth = 1.2;
         ctx!.beginPath();
-        ctx!.moveTo(sh.x - sh.w / 2, sh.y);
-        ctx!.lineTo(sh.x + sh.w / 2, sh.y);
+        ctx!.moveTo(wx - rp.w / 2, rp.y);
+        ctx!.quadraticCurveTo(wx, rp.y - rp.sag, wx + rp.w / 2, rp.y);
         ctx!.stroke();
+        if (rp.twin) {
+          ctx!.strokeStyle = `rgba(3, 4, 12, ${(a * 0.8).toFixed(3)})`;
+          ctx!.beginPath();
+          ctx!.moveTo(wx - rp.w / 2, rp.y + 2.5);
+          ctx!.quadraticCurveTo(wx, rp.y + 2.5 - rp.sag, wx + rp.w / 2, rp.y + 2.5);
+          ctx!.stroke();
+        }
       }
 
       // firework glints on the water, like the original's reflection bar
@@ -932,18 +1149,6 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         ctx!.fillRect(f.x - 12, skyH + (skyH - f.y) * 0.22, 24, 2);
       }
       ctx!.globalAlpha = 1;
-
-      // the current: long, uneven flow lines drifting downstream, each
-      // with its own length, speed and brightness — never uniform stripes
-      for (const f of flows) {
-        const wob = Math.sin(t / 1600 + f.phase) * 2;
-        ctx!.strokeStyle = `rgba(180, 200, 255, ${f.alpha.toFixed(3)})`;
-        ctx!.lineWidth = 1;
-        ctx!.beginPath();
-        ctx!.moveTo(f.x, f.y + wob);
-        ctx!.lineTo(f.x + f.len, f.y + wob);
-        ctx!.stroke();
-      }
 
       // rain rings where drops hit the water
       for (const r of rings) {
@@ -986,6 +1191,23 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         const wish = list.find((x) => x.id === s.id);
         if (wish) drawKrathong(wish, s, t);
       }
+
+      // name tags, last of all and on the tag canvas above the temple
+      // overlay — so no tag is ever occluded by a prang, and a nearer
+      // boat never covers a farther boat's tag either. The tag canvas
+      // is cleared each frame (the main canvas is fully repainted by
+      // the sky and water, so it needs no clear). If the tag canvas is
+      // somehow absent, the tags fall back to the main canvas.
+      const tagG = tagCtx ?? ctx;
+      if (tagG) {
+        if (tagCtx) tagCtx.clearRect(0, 0, w, h);
+        for (const s of ordered) {
+          const wish = list.find((x) => x.id === s.id);
+          if (!wish) continue;
+          const ty = rowY(s.row) + Math.sin(t / 1100 + s.phase) * 3;
+          drawNameTag(tagG, wish, s, ty, s.scale);
+        }
+      }
     }
 
     function frame(t: number) {
@@ -1002,7 +1224,14 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       const festival = isFestivalNight();
 
       // weather: live targets, or the fallback cycle; displayed values ease
-      if (wthr.mode === 'fallback') {
+      if (wthr.mode === 'forced') {
+        // DEV-ONLY (?cloud=NN): the cover stays exactly where it was
+        // put; no rain, no storm, gentle wind.
+        wthr.rain = 0;
+        wthr.fog = false;
+        wthr.storm = false;
+        wthr.wind = 0.3;
+      } else if (wthr.mode === 'fallback') {
         const fb = fallbackTargets(now - startTime);
         wthr.rain = fb.rain;
         wthr.cloud = fb.cloud;
@@ -1027,14 +1256,6 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           s.scale = rowScale(s.row);
         }
         if (now - s.bornAt > 5000) s.fresh = false;
-      }
-
-      // the current carries the flow lines downstream, each at its own
-      // speed; the wind hurries them along (drift is the same factor the
-      // krathongs ride on, declared above)
-      for (const f of flows) {
-        f.x += f.spd * drift;
-        if (f.x > w + 10) f.x = -f.len - 10;
       }
 
       // faint rings where krathongs sit, coming and going — the water
@@ -1286,8 +1507,15 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     } else {
       raf = requestAnimationFrame(frame);
     }
+    // Static-frame redraw for the reduced-motion effect below: sync the
+    // sprites to the latest wishes and draw one frozen frame.
+    redrawRef.current = () => {
+      syncSprites();
+      draw(1200);
+    };
     return () => {
       cancelAnimationFrame(raf);
+      redrawRef.current = null;
       ro.disconnect();
       window.removeEventListener('loy:river-click', onRiverClick);
       canvas.removeEventListener('mousemove', onMove);
@@ -1295,6 +1523,21 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       canvas.removeEventListener('mouseleave', onLeave);
     };
   }, []);
+
+  // Reduced motion: the scene is a single static frame, drawn once by
+  // the effect above — but the wishes arrive after the first paint
+  // (fetched from /api/wishes), and nothing redrew the frame, so
+  // reduced-motion users saw an empty river while the header counted
+  // the krathongs. Redraw the frozen frame whenever the wishes change.
+  // The animated path redraws every frame anyway, so this is a no-op
+  // there. (Found while verifying fix round 4; pre-existing since the
+  // photo round.)
+  const reducedMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  useEffect(() => {
+    if (reducedMotion) redrawRef.current?.();
+  }, [wishes, reducedMotion]);
 
   // The temple is a detailed SVG illustration layered over the canvas at
   // the far bank — the same spot the canvas silhouette stood, so the
@@ -1306,6 +1549,9 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       <div className="temple-overlay" aria-hidden="true">
         <WatArunSvg />
       </div>
+      {/* Name tags, above the temple overlay — purely visual, the names
+          are already in the wish wall and panel. */}
+      <canvas ref={tagRef} className="river-tags" aria-hidden="true" />
     </div>
   );
 }

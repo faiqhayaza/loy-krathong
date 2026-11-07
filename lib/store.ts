@@ -164,6 +164,17 @@ export async function addWish(wish: Wish): Promise<void> {
 }
 
 /**
+ * True when a wish with this id is on the river (stored or seed). The
+ * react route checks it first: reacting to a wish that does not exist
+ * is a 404, not a silent 200 that invents a reaction row for it.
+ */
+export async function wishExists(id: string): Promise<boolean> {
+  if (SEED_WISHES.some((w) => w.id === id)) return true;
+  const stored = await readStoredWishes();
+  return stored.some((w) => w.id === id);
+}
+
+/**
  * One reaction per wish per visitor (Rules: toggleReaction in the original
  * site). The client sends the reaction it is moving FROM (or null) and the
  * one it is moving TO (or null); the counts move by one in each direction,

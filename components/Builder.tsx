@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Lang, Wish } from '@/lib/data';
 import {
   BOATS,
@@ -44,6 +44,38 @@ interface Props {
 const MAX_STAMPS = 10;
 const FLOATED_DAY_KEY = 'loy:floated-day';
 const DAILY_STAMPS_KEY = 'loy:daily-stamps';
+const KRATHONG_KEY = 'loy:krathong';
+
+/**
+ * The visitor's krathong choices, kept on this device like the original
+ * site keeps them (its whole state, S.krathong included, is saved to
+ * localStorage): flower, boat and flame are restored on load instead of
+ * resetting to the defaults every visit.
+ */
+function loadKrathongChoice(): { flower: string; boat: string; flame: string } {
+  const fallback = { flower: DEFAULT_FLOWER, boat: DEFAULT_BOAT, flame: DEFAULT_FLAME };
+  try {
+    const raw = localStorage.getItem(KRATHONG_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as { flower?: unknown; boat?: unknown; flame?: unknown };
+    const flower =
+      typeof parsed.flower === 'string' &&
+      (isKnownFlower(parsed.flower) || isAllowedCustomEmoji(parsed.flower))
+        ? parsed.flower
+        : DEFAULT_FLOWER;
+    const boat =
+      typeof parsed.boat === 'string' && BOATS.some((b) => b.id === parsed.boat)
+        ? parsed.boat
+        : DEFAULT_BOAT;
+    const flame =
+      typeof parsed.flame === 'string' && FLAMES.some((f) => f.id === parsed.flame)
+        ? parsed.flame
+        : DEFAULT_FLAME;
+    return { flower, boat, flame };
+  } catch {
+    return fallback;
+  }
+}
 
 function loadDailyStamps(): string[] {
   try {
@@ -77,9 +109,9 @@ export default function Builder({ lang, onFloated }: Props) {
   const [name, setName] = useState('');
   const [wish, setWish] = useState('');
   const [worry, setWorry] = useState('');
-  const [flower, setFlower] = useState(DEFAULT_FLOWER);
-  const [boat, setBoat] = useState(DEFAULT_BOAT);
-  const [flame, setFlame] = useState(DEFAULT_FLAME);
+  const [flower, setFlower] = useState(() => loadKrathongChoice().flower);
+  const [boat, setBoat] = useState(() => loadKrathongChoice().boat);
+  const [flame, setFlame] = useState(() => loadKrathongChoice().flame);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [floated, setFloated] = useState<Wish | null>(null);
@@ -101,6 +133,16 @@ export default function Builder({ lang, onFloated }: Props) {
   });
   const [stamps, setStamps] = useState<string[]>(() => loadDailyStamps());
   const [celebrate, setCelebrate] = useState(false);
+
+  // Keep the krathong choices on this device, so a return visit finds
+  // the same flower, boat and flame picked.
+  useEffect(() => {
+    try {
+      localStorage.setItem(KRATHONG_KEY, JSON.stringify({ flower, boat, flame }));
+    } catch {
+      // private mode: the builder still works without it
+    }
+  }, [flower, boat, flame]);
 
   const blocked = containsBlocked(wish) || containsBlocked(name);
 

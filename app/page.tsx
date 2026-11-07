@@ -20,6 +20,8 @@ import SkyCanvas from '@/components/SkyCanvas';
 import RiverCanvas from '@/components/RiverCanvas';
 import Builder from '@/components/Builder';
 import WishWall from '@/components/WishWall';
+import SoundToggle from '@/components/SoundToggle';
+import { audio } from '@/lib/audio';
 import { useReactions } from '@/components/useReactions';
 
 const FESTIVAL_AT = Date.UTC(2026, 10, 24, 12, 0, 0); // 19:00 Asia/Bangkok
@@ -37,6 +39,25 @@ function useCountdown() {
     mins: Math.floor(diff / 60000) % 60,
     secs: Math.floor(diff / 1000) % 60,
     tonight: diff === 0,
+  };
+}
+
+/**
+ * Countdown to the festival opening (first day, 00:00 Bangkok) for the
+ * before-phase banner — the original site's renderBanner counts to the
+ * opening, while the hero keeps counting to the full moon.
+ */
+function useOpeningCountdown(firstDay: string) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const target = Date.parse(`${firstDay}T00:00:00+07:00`);
+  const diff = Math.max(0, target - now);
+  return {
+    days: Math.floor(diff / 86400000),
+    hours: Math.floor((diff % 86400000) / 3600000),
   };
 }
 
@@ -82,6 +103,7 @@ export default function Page() {
   });
   const s = t(lang);
   const cd = useCountdown();
+  const opening = useOpeningCountdown('2026-11-18');
 
   const [wishes, setWishes] = useState<Wish[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,6 +186,22 @@ export default function Page() {
     return () => io.disconnect();
   }, [loading]);
 
+  // Ambient audio: browsers block sound before the visitor interacts, so
+  // the kalimba starts on the first pointerdown/keydown anywhere on the
+  // page and fades in (lib/audio). ensureStarted is idempotent, so the
+  // listeners can stay mounted. The music also pauses while the tab is
+  // hidden and resumes when visible.
+  useEffect(() => {
+    audio.bindVisibility();
+    const start = () => audio.ensureStarted();
+    window.addEventListener('pointerdown', start);
+    window.addEventListener('keydown', start);
+    return () => {
+      window.removeEventListener('pointerdown', start);
+      window.removeEventListener('keydown', start);
+    };
+  }, []);
+
   function switchLang(next: Lang) {
     setLang(next);
     try {
@@ -238,16 +276,47 @@ export default function Page() {
           <a href="#river">{s.navRiver}</a>
           <a href="#float">{s.navFloat}</a>
           <a href="#wishes">{s.navWishes}</a>
-          <span className="lang-toggle" role="group" aria-label="Language / ภาษา">
-            <button type="button" aria-pressed={lang === 'en'} onClick={() => switchLang('en')}>
-              EN
-            </button>
-            <button type="button" aria-pressed={lang === 'th'} onClick={() => switchLang('th')}>
-              ไทย
-            </button>
+          <span className="top-controls">
+            <span className="lang-toggle" role="group" aria-label="Language / ภาษา">
+              <button type="button" aria-pressed={lang === 'en'} onClick={() => switchLang('en')}>
+                EN
+              </button>
+              <button type="button" aria-pressed={lang === 'th'} onClick={() => switchLang('th')}>
+                ไทย
+              </button>
+            </span>
+            <SoundToggle lang={lang} />
           </span>
         </nav>
       </header>
+
+      {/* Phase banner — the original site's renderBanner: before the
+          festival it counts down to the opening (18 November); in the
+          archive and closed phases it says so plainly. The hero keeps
+          counting to the full moon. */}
+      {cal.phase === 'before' && (
+        <div className="phase-banner" role="status">
+          <strong>🌙 {s.phaseBeforeTitle}</strong>
+          <span>{s.phaseCountdown(opening.days, opening.hours)}</span>
+        </div>
+      )}
+      {cal.phase === 'opening' && (
+        <div className="phase-banner" role="status">
+          <strong>{s.phaseOpeningTitle}</strong>
+          <span>{s.phaseOpeningBody}</span>
+        </div>
+      )}
+      {cal.phase === 'archive' && (
+        <div className="phase-banner" role="status">
+          <strong>{s.phaseArchiveTitle}</strong>
+          <span>{s.phaseArchiveBody}</span>
+        </div>
+      )}
+      {cal.phase === 'closed' && (
+        <div className="phase-banner" role="status">
+          <strong>{s.phaseClosedTitle}</strong>
+        </div>
+      )}
 
       {/* Hero */}
       <section className="hero" id="top">
@@ -365,6 +434,9 @@ export default function Page() {
                   </span>
                 )}
               </div>
+              <div className="river-credit">
+                River photo: <a href="https://commons.wikimedia.org/wiki/File:Moonlight_over_the_Chagres_river_(17057830922).jpg" target="_blank" rel="noreferrer">Brian Gratwicke</a>, CC BY 2.0
+              </div>
               {wishes.length === 0 && !loading && (
                 <div className="river-empty">{s.riverEmpty}</div>
               )}
@@ -423,6 +495,17 @@ export default function Page() {
         </div>
         <WishWall wishes={wishes} lang={lang} myWishId={myWishId} reacted={reacted} onReact={toggleReaction} onReacted={updateWishReactions} />
       </section>
+
+      {/* Closing footer — the page used to end abruptly after the wish
+          wall. No privacy text here (that block stays removed); just a
+          proper ending. */}
+      <footer className="site-footer">
+        <span>
+          <span aria-hidden="true">🪷 </span>
+          {s.festivalName}
+        </span>
+        <span>{s.festivalDate}</span>
+      </footer>
     </div>
   );
 }

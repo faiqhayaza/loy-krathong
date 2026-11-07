@@ -90,12 +90,15 @@ export interface Flame {
 }
 
 export const FLAMES: Flame[] = [
-  { id: 'gold', color: '#ffb347', label: { en: 'Gold', th: 'ทอง' } },
-  { id: 'rose', color: '#ff7a9e', label: { en: 'Rose', th: 'ชมพู' } },
-  { id: 'violet', color: '#b18cff', label: { en: 'Violet', th: 'ม่วง' } },
-  { id: 'teal', color: '#4dd0c4', label: { en: 'Teal', th: 'เขียวน้ำทะเล' } },
-  { id: 'blue', color: '#6aa9ff', label: { en: 'Blue', th: 'น้ำเงิน' } },
-  { id: 'white', color: '#fff3c4', label: { en: 'White', th: 'ขาว' } },
+  // The original site's seven flames, hexes and labels verbatim —
+  // the rebuild had six and was missing ruby red.
+  { id: 'gold', color: '#ffc36b', label: { en: 'Candle gold', th: 'ทองเทียน' } },
+  { id: 'rose', color: '#ff6fa8', label: { en: 'Lotus pink', th: 'ชมพูบัว' } },
+  { id: 'violet', color: '#b48cff', label: { en: 'Moonlight violet', th: 'ม่วงแสงจันทร์' } },
+  { id: 'teal', color: '#5ee0a0', label: { en: 'Jade green', th: 'เขียวหยก' } },
+  { id: 'blue', color: '#5ec8ff', label: { en: 'River blue', th: 'ฟ้าสายน้ำ' } },
+  { id: 'ruby', color: '#ff5a4a', label: { en: 'Ruby red', th: 'แดงทับทิม' } },
+  { id: 'white', color: '#f4f7ff', label: { en: 'Moon white', th: 'ขาวจันทรา' } },
 ];
 export const DEFAULT_FLAME = 'gold';
 
@@ -115,26 +118,193 @@ export const BLOCKED_EMOJI = new Set([
 ]);
 
 /**
- * Small blocklist for the public river: common English and Thai slurs and
- * profanity, plus the blocked-emoji set. This is a first pass, not a
- * guarantee — the admin delete route exists for anything it misses.
+ * The deterministic word list that screens a wish (and the name shown
+ * with it) before it can reach the public river — ported verbatim from
+ * the original single-file site (DenyList in
+ * loy-krathong-seven-nights__1.html): the 66 terms and the layered
+ * matcher alike. Pure, with no server imports, so the float form can
+ * warn as someone types and the server can enforce the same list on
+ * submit.
+ *
+ * Deliberately NOT in this list, although the rebuild's first list had
+ * them: 'kill yourself', 'kys' and 'damn you'. The original never
+ * blocked them, and blocking them rejected a suicidal user's wish
+ * outright instead of letting it float with the crisis message
+ * (hotline 1323) — which is the original's design.
  */
-const BLOCKED_WORDS = [
-  // English
-  'fuck', 'shit', 'bitch', 'bastard', 'cunt', 'dick', 'pussy', 'whore', 'slut',
-  'damn you', 'kill yourself', 'kys',
-  // Thai (common profanity / insults)
-  'เหี้ย', 'ควย', 'หี', 'สัส', 'ไอ้เหี้ย', 'ไอ้สัส', 'มึง', 'กู', 'เย็ด', 'จัญไร',
-  'ชิบหาย', 'ตายห่า',
+const DENY_TERMS = [
+  // English profanity / sexual content
+  'fuck',
+  'shit',
+  'cunt',
+  'bitch',
+  'whore',
+  'slut',
+  'dick',
+  'cock',
+  'pussy',
+  'rape',
+  'nigger',
+  'nigga',
+  'faggot',
+  'retard',
+  'kike',
+  'chink',
+  'tranny',
+  'asshole',
+  'arsehole',
+  'bastard',
+  'wanker',
+  'twat',
+  'bollocks',
+  'dickhead',
+  'douchebag',
+  'jackass',
+  'dumbass',
+  'wtf',
+  'stfu',
+  'fck',
+  'fuk',
+  'phuck',
+  'biatch',
+  'piss',
+  // Thai profanity written in Latin letters
+  'kuay',
+  'kuy',
+  // Thai profanity / insults
+  'ควย', // vulgar
+  'หี', // vulgar
+  'เย็ด', // vulgar
+  'สัส',
+  'สัตว์เดรัจฉาน',
+  'ไอ้สัส',
+  'เหี้ย',
+  'ชิบหาย',
+  'กะหรี่',
+  'ดอกทอง',
+  'แม่ง',
+  'ไอ้เวร',
+  'มึง',
+  'ไอ้ควาย',
+  'ระยำ',
+  'จัญไร',
+  'ส้นตีน',
+  'ชาติหมา',
+  'อีดอก',
+  'ฉิบหาย',
+  'เชี่ย',
+  'เชี้ย',
+  'สถุน',
+  'ไอ้สัตว์',
+  'อีสัตว์',
+  'ไอ้เลว',
+  'อีเลว',
+  'ตอแหล',
+  'ร่าน',
+  'กระหรี่',
 ];
 
+/**
+ * Collapses separators to a single space rather than deleting them, so
+ * word boundaries survive for the Latin matcher below.
+ */
+function normalise(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/[\s._\-*|/\\]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const THAI_CHARS = /[\u0E00-\u0E7F]/;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Latin deny terms are matched on word boundaries, for the same reason
+ * the crisis list is: `rape` is a deny term and it is inside `grapes`,
+ * so a substring match would reject "I wish for a grape harvest" and
+ * tell the person to reword a perfectly good wish. Thai terms stay
+ * substring-matched because Thai is written without spaces.
+ */
+const LATIN_DENY = DENY_TERMS.filter((term) => !THAI_CHARS.test(term)).map(
+  (term) => new RegExp(`\\b${escapeRegExp(normalise(term))}\\b`),
+);
+
+const THAI_DENY = DENY_TERMS.filter((term) => THAI_CHARS.test(term)).map((term) =>
+  normalise(term),
+);
+
+/**
+ * Terms that must NOT be matched against separator-stripped text,
+ * because they appear inside ordinary words once the spaces are gone:
+ *   rape -> g·rape·s        dick -> Dick·son        cock -> cock·pit
+ * Everything else is safe to collapse-match, which is what catches
+ * `f u c k` and `f.u.c.k`.
+ *
+ * Keep this list in mind when adding a short term to DENY_TERMS: if
+ * the letters could fall inside a real word, add it here too.
+ */
+const NOT_COLLAPSE_SAFE = new Set([
+  'rape',
+  'dick',
+  'cock',
+  'kike',
+  'chink',
+  'asshole', // glass hole
+  'fuk', // Fukuoka
+  'piss', // Mississippi
+  'twat',
+  'wtf',
+  'kuy',
+  'kuay',
+]);
+
+/**
+ * Number and symbol look-alikes, undone before the separator-stripped
+ * match so `sh1t`, `fvck` and `$h!t` are caught too. Only that match
+ * uses them: a number in an ordinary wish never becomes a word on its own.
+ */
+const LOOKALIKES: Record<string, string> = {
+  '0': 'o',
+  '1': 'i',
+  '!': 'i',
+  '3': 'e',
+  '4': 'a',
+  '@': 'a',
+  '5': 's',
+  $: 's',
+  '7': 't',
+  '+': 't',
+  v: 'u',
+};
+
+/**
+ * Ordinary Thai words that contain a deny term, removed before the Thai
+ * match: `หีบ` (a chest, a box) contains `หี`.
+ */
+const THAI_BENIGN = ['หีบ'];
+
+const COLLAPSED_DENY = DENY_TERMS.filter(
+  (term) => !THAI_CHARS.test(term) && !NOT_COLLAPSE_SAFE.has(term),
+).map((term) => normalise(term).replace(/ /g, ''));
+
+/** Layer 1. True when the text must be rejected outright. */
 export function containsBlocked(text: string): boolean {
-  const lower = text.toLowerCase();
-  if (BLOCKED_WORDS.some((w) => lower.includes(w))) return true;
-  for (const e of BLOCKED_EMOJI) {
-    if (text.includes(e)) return true;
-  }
-  return false;
+  const normalised = normalise(text);
+  if (LATIN_DENY.some((pattern) => pattern.test(normalised))) return true;
+  const thai = THAI_BENIGN.reduce(
+    (out, word) => out.split(word).join(' '),
+    normalised,
+  );
+  if (THAI_DENY.some((term) => thai.includes(term))) return true;
+  const collapsed = normalised.replace(/ /g, '');
+  if (COLLAPSED_DENY.some((term) => collapsed.includes(term))) return true;
+  const unmasked = collapsed.replace(/[0-9!@$+v]/g, (c) => LOOKALIKES[c] ?? c);
+  return COLLAPSED_DENY.some((term) => unmasked.includes(term));
 }
 
 export function isKnownFlower(id: string): boolean {

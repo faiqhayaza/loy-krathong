@@ -7,7 +7,7 @@
 import { useEffect, useRef } from 'react';
 
 interface Star { x: number; y: number; r: number; phase: number; speed: number }
-interface Lantern { x: number; y: number; speed: number; sway: number; scale: number; hue: number }
+interface Lantern { x: number; y: number; speed: number; sway: number; scale: number; hue: number; top: number }
 interface Firefly { x: number; y: number; phase: number; speed: number }
 interface Meteor { x: number; y: number; vx: number; vy: number; life: number }
 
@@ -42,6 +42,46 @@ export default function SkyCanvas() {
       seed();
     }
 
+    // Lanterns stay out of the headline and the moon. They used to spawn
+    // across the whole hero and rise through it — straight through the
+    // headline text and across the moon disc. Now they rise only in two
+    // safe lanes, each with its own ceiling: a clear-sky lane on the
+    // right, where no copy sits, from 0.58h up (below the headline,
+    // which ends around 0.55h, and far below the moon at 0.24h); and a
+    // low lane on the left, deep enough that the copy's dark gradient
+    // veils them to faint glows. A lantern recycles at its lane's
+    // ceiling, never higher.
+    function lanternLane(): { x: number; y: number; top: number } {
+      if (Math.random() < 0.6) {
+        return {
+          x: w * (0.62 + Math.random() * 0.35),
+          y: h * (0.58 + Math.random() * 0.42),
+          top: h * 0.58,
+        };
+      }
+      return {
+        x: w * (0.03 + Math.random() * 0.5),
+        y: h * (0.82 + Math.random() * 0.18),
+        top: h * 0.82,
+      };
+    }
+    function seedLanterns() {
+      lanterns.length = 0;
+      const ln = Math.max(4, Math.floor(w / 260));
+      for (let i = 0; i < ln; i++) {
+        const spot = lanternLane();
+        lanterns.push({
+          x: spot.x,
+          y: spot.y,
+          speed: 0.12 + Math.random() * 0.22,
+          sway: Math.random() * Math.PI * 2,
+          scale: 0.7 + Math.random() * 0.7,
+          hue: 32 + Math.random() * 14,
+          top: spot.top,
+        });
+      }
+    }
+
     function seed() {
       stars.length = 0;
       const n = Math.floor((w * h) / 9000);
@@ -54,18 +94,7 @@ export default function SkyCanvas() {
           speed: 0.4 + Math.random() * 1.2,
         });
       }
-      lanterns.length = 0;
-      const ln = Math.max(4, Math.floor(w / 260));
-      for (let i = 0; i < ln; i++) {
-        lanterns.push({
-          x: Math.random() * w,
-          y: h * (0.25 + Math.random() * 0.75),
-          speed: 0.12 + Math.random() * 0.22,
-          sway: Math.random() * Math.PI * 2,
-          scale: 0.7 + Math.random() * 0.7,
-          hue: 32 + Math.random() * 14,
-        });
-      }
+      seedLanterns();
       fireflies.length = 0;
       for (let i = 0; i < 14; i++) {
         fireflies.push({
@@ -250,12 +279,14 @@ export default function SkyCanvas() {
     }
 
     function frame(t: number) {
-      // drift lanterns upward, recycle at the top
+      // drift lanterns upward, recycle at their lane's ceiling
       for (const l of lanterns) {
         l.y -= l.speed;
-        if (l.y < -30) {
-          l.y = h + 20;
-          l.x = Math.random() * w;
+        if (l.y < l.top) {
+          const spot = lanternLane();
+          l.y = spot.y;
+          l.x = spot.x;
+          l.top = spot.top;
         }
       }
       // meteors

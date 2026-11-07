@@ -598,3 +598,658 @@ content (destinations, specials, secrets, milestones) is already ported in
   they survive in git history at commit `22af37c5`.
 - **Counts**: the wall count and river count both come from the same
   `GET /api/wishes` response, so they agree by construction.
+
+## Fix round — 2026-11-06 (after the three independent audits failed commit 1fa97d4b)
+
+Single builder, fix-only round: the ten defects below, nothing else.
+No push, no deploy — the tree is left ready for re-audit. The big systems
+(missions, specials, secrets, journey card, event store, admin config,
+sounds) were NOT built; they stay Faiq's go/no-go.
+
+### What changed, per item
+
+1. **River** — `components/RiverCanvas.tsx`. Water gradient now reads as
+   depth: far water `#16204a` catching the sky/moon, darkening to `#03040c`
+   at the bottom, plus three slow drifting sheen bands. Flow lines 16 → 30,
+   length 90–280 px, alpha 0.07–0.20, speed 0.35–1.0, widths 1–2 px.
+   Moonlight path: a soft gold glow column under the moon plus 30 dashes,
+   14–64 px wide, alpha 0.10–0.30. Reeds: 6 clusters with gaps (not a
+   uniform comb), blades 11–30 px with individual height/lean/thickness,
+   ~a third with cattail seed heads; bank slightly lighter with a faint
+   waterline highlight.
+2. **Temple desktop** — `components/WatArunSvg.tsx`, `app/globals.css`.
+   Stone `#1c2447` → `#2b3568`, mosaic tiles lighter with pale tiles at
+   opacity 0.32–0.38 (was 0.16–0.22), gold rim light opacity 0.3 → 0.6
+   and width 1 → 1.5, glow 0.14 → 0.24, sala roofs lighter with gold
+   edge 0.55. The overlay now keeps the SVG's own aspect ratio
+   (`preserveAspectRatio="xMidYMid meet"`, `.temple-overlay` sized by
+   `aspect-ratio: 600/380`) instead of stretching it; on desktop it is
+   82% wide, top −5%, so the prang is ~160 px tall (was ~96 px) with its
+   base still on the horizon and centre at 30% of the river width.
+3. **Clouds** — `components/RiverCanvas.tsx`. Root cause: the sprites were
+   dark navy on a dark navy sky. Puffs are now moonlit pale
+   (`rgba(148,162,214,0.6)` core, `rgba(205,214,248,0.4)` tops). Added a
+   DEV-ONLY query flag `?cloud=NN` that forces cloud cover 0–100 for
+   visual checks (the live fetch never overrides it while set); it affects
+   only this browser's view and has no UI.
+4. **Lanterns** — `components/SkyCanvas.tsx`. They now rise only in two
+   safe lanes with per-lane ceilings: a clear-sky lane on the right
+   (x 0.62–0.97w, ceiling 0.58h) and a low lane on the left
+   (x 0.03–0.53w, ceiling 0.82h, veiled by the copy gradient). A lantern
+   recycles at its lane's ceiling, never higher — so none crosses the
+   headline (ends ~0.55h) or the moon (0.24h).
+5. **Footer** — `app/page.tsx`, `app/globals.css`. `<footer
+   class="site-footer">` after the wish wall: "🪷 Seven Nights of Wishes"
+   + "Loy Krathong · Tuesday 24 November 2026 · Bangkok". No privacy
+   text — that block stays removed.
+6. **Denylist** — `lib/data.ts`, `lib/crisis.ts`. Faithful port of the
+   HTML's DenyList (~line 2109): 66 terms (34 English + `kuay`/`kuy` +
+   30 Thai) with the layered matcher — `normalise`, word-boundary regexes
+   for Latin, Thai substring matching with `THAI_BENIGN` stripping
+   (`หีบ`), collapsed-form matching with `NOT_COLLAPSE_SAFE`,
+   lookalike unmasking (`LOOKALIKES`). "kill yourself" / "kys" /
+   "damn you" are NOT in the list (the HTML never had them): a suicidal
+   wish now floats instead of being rejected. To keep the crisis rail
+   working, `"kill yourself"` was added to `CRISIS_TERMS` in
+   `lib/crisis.ts` (the HTML's list has only first-person forms, so
+   without this the phrase would float with no crisis response).
+7. **Countdown / phase banners** — `app/page.tsx`, `lib/i18n.ts`. A phase
+   banner sits between the topbar and the hero, driven by
+   `cal.phase`: before → "🌙 The festival begins soon — Bangkok opens in
+   11 days and 0 hours" (EN/TH verbatim from the HTML's `renderBanner`,
+   counting to 18 Nov 00:00 Bangkok via a new `useOpeningCountdown`
+   hook); opening / archive / closed → their HTML strings. The hero's
+   full-moon countdown is unchanged.
+8. **Flames** — `lib/data.ts`. Seven flames per the HTML's list, ruby red
+   `#ff5a4a` restored as the 6th (HTML order). Per-krathong pick only;
+   the daily-candle model was NOT rebuilt.
+9. **Krathong choice** — `components/Builder.tsx`. Flower, boat and flame
+   are saved to localStorage under `loy:krathong` on every change and
+   restored on load (validated: unknown ids fall back to defaults).
+10. **Reaction 404** — `lib/store.ts`,
+    `app/api/wishes/[id]/react/route.ts`. New `wishExists(id)` (stored
+    wishes + seeds); the react route returns 404 `not_found` when the
+    wish does not exist, instead of inventing a reaction row for it.
+
+### How it was verified
+
+- **Node tests** (`/tmp/lk-fix/test-denylist.ts`, run against the real
+  lib files): 55/55 pass. Blocked: `fuck`, `shit`, `nigger`, `bitch`,
+  `whore`, `cunt`, `rape`, `dickhead`, `phuck`, Thai `ควย`/`เหี้ย`/`มึง`/
+  `กะหรี่`/`ไอ้สัส`/`ชิบหาย`; evasions `f u c k`, `f.u.c.k`, `f*ck`,
+  `sh1t`, `$h!t`, `fvck`, `s h i t`. Allowed: "kill yourself", "kys",
+  "damn you", "grapes", "Dickson", "Fukuoka", "Mississippi", "cockpit",
+  "glass hole", `หีบ` / `หีบสมบัติของย่า`, `กูเกิล`, `ตายห่า`. Crisis:
+  "kill yourself", "kill myself", "I want to die", spaced "s u i c i d e",
+  Thai `อยากตาย` trigger; "grapes", "kill your darlings", plain worry do
+  not. Flames: 7, ruby `#ff5a4a` present, ids unique. Calendar: before /
+  live day 1 / live day 7 / archive / closed all correct.
+- **Dev API tests** (`next dev` on :3100, stopped before building):
+  blocked wish → 400 `blocked_content`; wish containing "kill yourself"
+  → 201 and floats (flame `ruby` persisted); react on a nonexistent id
+  → 404 `not_found`; react on the floated wish → 200 (`love: 1`). The
+  crisis message triggers client-side: `Builder.tsx` calls
+  `isCrisis(worryText, text)` before the POST and shows the crisis card
+  (hotline 1323) instead of the blessing; `isCrisis("kill yourself")`
+  is true in the node test above, and the worry itself is never sent to
+  the server (the route drops it).
+- **Clean-copy build** (source without `.next` copied to
+  `/tmp/lk-fix/build-copy`, built there): passes; `/` First Load JS
+  122 kB. Served with `next start` on :3200 and screenshotted with
+  headless Chrome.
+- **Screenshots** (`/tmp/lk-fix/`): `f1-hero.png` — phase banner
+  "Bangkok opens in 11 days and 0 hours", moon clear, lanterns in the
+  lower right only, none through the headline or moon. `f2-river.png` /
+  `r2-river.png` / `r3-river-wide.png` — river with visible current
+  (long bright flow lines), broad broken moonlight path under the moon,
+  depth gradient (lighter far water → dark near water), reed clusters at
+  the water's edge, temple large with readable porcelain mosaic, gold
+  windows and gold rim light; one soft cloud top-left (fallback cycle).
+  `f4-overcast.png` / `o2-river.png` (`?cloud=97`) — forced overcast:
+  big soft pale cloud masses across the sky, moon veiled to a pale disc,
+  moonlight path fainter as designed. `f3-footer.png` — footer present
+  with site name + date, and the flame picker shows 7 flames.
+  `f6-mobile-hero.png` / `f7-mobile-river.png` / `f6-hero-crop.png` —
+  mobile hero: phase banner wraps to two lines, lanterns below the
+  headline and away from the moon. Raw hero-canvas frames
+  (`canvas-0/1/2.png` via `toDataURL`) plus a pixel analysis: every
+  detected lantern sits inside its lane (sky lane x 0.64–0.72w,
+  y 0.65–0.86h), none above 0.58h, none near the moon (0.78w, 0.24h).
+- **Krathong persistence, live in the browser**: clicked Ruby red →
+  localStorage `loy:krathong` = `{"flower":"lotus","boat":"leaf",
+  "flame":"ruby"}`; after reload the value is unchanged and Ruby red is
+  still selected. Then Rose + "Lotus pink" boat → stored
+  `{"flower":"rosette","boat":"lotus_pink","flame":"ruby"}`; after
+  reload all three still selected. Thai banner checked live:
+  "🌙 เทศกาลใกล้เริ่มแล้ว กรุงเทพฯ จะเปิดในอีก 11 วัน 0 ชั่วโมง".
+- **Delivered-tree build**: `rm -rf .next && npm run build` in
+  `~/workspace/loy-krathong` passes clean; `/` First Load JS 122 kB
+  (was 120 kB before this round). `next dev` and `npm run build` were
+  never run concurrently.
+
+### What could not be verified
+
+- The live site still runs the previous version (commit `29ae69b`); this
+  round was not deployed, so none of this has been seen on
+  loykrathong.web.id. The clean-copy server had no Redis, so its river
+  started empty ("The river is quiet") — the real river's wishes (incl.
+  Faiq's "Test A") live in production Redis and were not touched.
+- The opening/archive/closed banners were verified only in the before
+  phase (today is before the festival); the other phases render from the
+  same code and strings but their live appearance was not screenshot.
+- The forced-cloud flag is dev-only and was verified only in this
+  sandbox's headless Chrome; live Open-Meteo weather still cannot be
+  reached from here, so the live-weather path was not exercised.
+- Krathong persistence was verified in headless Chrome's localStorage;
+  real-browser behaviour (e.g. private mode) falls back to defaults by
+  design and was not tested.
+
+## Fix round 2, 2026-11-06 ~23:50 — river texture in a still + temple desktop contrast
+
+Scope: ONLY the two remaining visual failures from the independent visual
+re-audit (23:50). Everything else already passed. Not pushed, not deployed.
+
+The re-audit's key insight: the auditor judges STILL screenshots, so motion
+alone fixes nothing — the water and the temple must read correctly in a
+single frozen frame. Both fixes were therefore judged on stills, not on
+animation, and measured with numbers, not just by eye.
+
+### 1. River — ripple texture, broad moon path, visible depth bands
+
+(`components/RiverCanvas.tsx` only; reeds, krathongs/tags, temple
+reflection, weather, fireworks, swifts, reduced-motion frame untouched.)
+
+- **Ripple arcs (new):** 78 seeded arcs — shallow upward curves, a pale
+  highlight with a dark shadow twin below (half carry one) — spread across
+  the whole water surface, 38% denser inside the moon path. They pulse
+  gently (alpha floor 60% of base) but never fade out, so a frozen frame
+  still shows wave texture. Drawn after the flow lines, before the rings.
+- **Moon path, now a broad band:** the soft glow widened from ±70px to
+  ±130px at alpha 0.08, plus a second wash to ±240px at 0.03; shimmer
+  dashes 30 → 46, wider (20–110px vs 14–50px), line width 2–3 by dash
+  width, with a sideways wobble. It reads as a wide shimmering band, not
+  a column of dashes.
+- **Depth bands the eye can see:** the gradient now has distinct stops —
+  far water `#2b3563` (was `#16204a`), mid `#1a2348`/`#141c3e`, near
+  `#0e1432` → `#03040c` — with a soft line of caught light at each shelf
+  edge (16% and 50% of the water depth). The sheen bands were
+  strengthened (alpha 0.08–0.11 vs 0.05–0.07).
+- **Flow lines quietened:** alpha 0.07–0.20 → 0.05–0.12 — they are the
+  motion under the texture now, not the texture itself. The old ones read
+  as scratches on a flat field.
+
+### 2. Temple desktop — genuinely lighter stone, defining gold rim
+
+(`components/WatArunSvg.tsx` only; glow, windows, satellites, reflection,
+base on the horizon untouched.)
+
+- **Stone genuinely lightened:** mosaic base `#2e3a6e` → `#8b93bd`,
+  tiles `#36427f`/`#232c56` → `#9aa1cc`/`#767eae`, pale tile opacities
+  0.32/0.38 → 0.55, prang base fill `#2b3568` → `#7d86b3`, mosaic
+  overlay opacity 0.65 → 0.85. Sala roofs `#232a52` → `#3a4376`,
+  base platform `#1a2142` → `#2e3766`.
+- **Defining gold rim:** the old single 1.5px line at 0.6 opacity on one
+  shaft edge is now a 6px soft halo (0.22) plus a 3px bright edge
+  (`#ffdf8a`, 0.95) on BOTH shaft edges, plus 1.8px gold strokes down both
+  sides of the stepped base. Roofline strokes 0.8px/0.55 → 1.4px/0.85,
+  platform gold line 0.45 → 0.8.
+
+### 3. Language one-off — no defect
+
+One load rendered in Thai with no stored preference and navigator
+en-US. Checked `lib/i18n.ts` and `app/page.tsx`: there is NO
+`navigator.language` detection anywhere in the app (grep: zero matches).
+The only source of Thai is a stored `loy:lang: "th"` in localStorage
+(`useState` initializer, default `'en'`; SSR always `'en'`). The Thai
+load must have reused a Chrome profile whose localStorage already held
+the preference — the auditors reused profiles across runs, and an
+earlier run had exercised the TH toggle. No code change made.
+
+### Verification
+
+- `npm run build` — **pass, clean** (fresh `.next`, TypeScript strict +
+  lint), `/` 123 kB First Load JS.
+- Served a clean-copy `next start` (port 3200) and screenshotted with
+  headless Chrome (Chromium 158 via CDP) at 1440x900 and 390x844, two
+  desktop river shots 8s apart so the still is judged as a still.
+  Screenshots in `/tmp/lk-fix2/`:
+  - `d2-river.png` — desktop river at 1440x900: pale lavender temple
+    with gold rim and visible mosaic, broad gold moon band, ripple arcs
+    across the water, far water clearly lighter than the near water.
+  - `d2-river-later.png` — same view 8s later: same texture, moon
+    dashes in different phases — the texture is consistent, not a
+    lucky frame.
+  - `d2-temple-crop2.png` — temple band at 2x: pale stone, checker
+    mosaic, thick gold rim on both shaft edges, gold windows and eave
+    lines; reads at normal viewing distance, not only in the crop.
+  - `d2-water-crop2.png` — water at full size: dozens of ripple arcs,
+    broad moon band on the right, far band lighter, temple reflection
+    at top-left, text still readable.
+  - `m2-river.png` — mobile 390x844: temple and water both read well;
+    the water texture is clearest here.
+  - `m2-water-crop2.png` — mobile water at full size: arcs everywhere,
+    broad moon band, depth fading to dark at the bottom.
+- Measured, same coordinates, old vs new desktop stills (luminance maps):
+  - Water: mean luminance 23 → 35, stdev 10 → 17, max 54 → 89 — the
+    surface has real variation instead of near-uniform darkness.
+  - Temple band: old prangs reached luminance ~22–65 against a dark sky;
+    new prangs reach ~65–150 across their whole mass, sky unchanged —
+    the stone roughly doubled in rendered brightness.
+- The CDP `clip` screenshots came back blank (clip coordinates in this
+  Chrome build), so the crops above were cut from the full shots with
+  PIL instead; the blank clip files were deleted.
+- Not verified: live-browser behaviour on a real device, and live
+  Open-Meteo weather end-to-end (headless Chrome here reaches no
+  external host; the fallback cycle rendered the clear-sky scene in
+  these shots, as in earlier rounds).
+
+## Fix round 3, 2026-11-07 ~00:00–01:00 — the river is a real photograph
+
+### Why a different approach
+Two rounds of hand-drawn water hit a ceiling: the round-2 visual
+re-audit (temple PASS, river still FAIL) said the river was better but
+still did not read as natural water in a still frame — drawn texture on
+a flat dark field. This round stops drawing the water and bases it on a
+real photograph instead.
+
+### The photo
+- Source: "Night reflections of houses, bridge and the moon on the
+  water of Emajõgi river in Tartu, Tartumaa, Estonia, November 2020",
+  by Sergei Gussev, via Wikimedia Commons
+  (https://commons.wikimedia.org/w/index.php?curid=179288630).
+- Licence: **CC BY 4.0** — free to use with attribution. Attribution is
+  a small muted credit line inside the river panel, bottom right
+  ("River photo: Sergei Gussev, CC BY 4.0", linked to the file page),
+  plus this note. The credit never intercepts clicks
+  (`pointer-events: none` on the wrapper).
+- Candidates rejected after looking at them: Lake Bohinj (glassy
+  mirror lake + mountains + pier — water too smooth, wrong subject),
+  Francavilla moonlit sea (rock breakwater across the frame AND a
+  photographer's watermark bottom-right), Shingle Street lagoon
+  (daytime, blue sky, shingle beach — not night).
+- Processing (PIL, script in /tmp/lk-fix3 — the crop/grade steps are
+  recorded here so the image can be rebuilt): cropped to water only
+  (y 1800–2957 of 3947×2957, dropping the bank, road and red bridge
+  arch), flipped horizontally so the warm reflection band and moon
+  glint sit on the right, under the canvas moon (x 0.78w); navy grade
+  (R×0.86, G×0.94, B×1.10, 18% blend toward #0a1030); bright streaks
+  warmed back toward gold; red neon arch reflection shifted to gold;
+  depth gradient (top 1.0 → bottom 0.82); the stray white moon glint
+  painted out (it read as a random white blob); contrast 1.07;
+  resized to 2200×644, JPEG q82, **70 KB**.
+- Shipped locally at `public/river-night.jpg` — no hotlink, no
+  external dependency. No EXIF.
+
+### What changed in code
+- `components/RiverCanvas.tsx` only (plus the credit in
+  `app/page.tsx` / `app/globals.css`):
+  - The water base is now the photo, cover-fit into the water rect
+    (`drawImage` with `Math.max(w/iw, waterH/ih)` scale). Until it
+    loads, the old gradient stands in so the first paint is never
+    blank; the animation loop picks the photo up on load, and a
+    reduced-motion frame redraws once on load.
+  - A faint navy wash seats the photo with the drawn sky (0.08 top →
+    0.16 bottom); under a heavy overcast a veil dims the water
+    (overcast × 0.22), like the sky.
+  - REMOVED: the flow lines and the ripple arcs (seed, update and
+    draw — `FlowLine`/`Ripple` interfaces gone). The photo carries
+    the texture now; drawn marks on top of it reintroduced exactly
+    the fake look this round removes.
+  - Moon shimmer kept but quieted twice: first to 30 dashes at
+    alpha 0.06–0.20 — still read as a ladder of gold bars on the
+    photo — then to **14 dashes, 12–46px wide, alpha 0.03–0.09,
+    1.5px, clustered in the top 55% of the water** (where a real
+    moon path is brightest), glow band 0.08 → 0.03, wash 0.03 → 0.01.
+  - Untouched: sky, stars, moon, clouds, swifts, meteors, fireworks,
+    rain, mist, far bank + reeds, temple reflection lines,
+    krathongs/tags, reduced-motion frame, daily limit, stamps.
+- `app/page.tsx`: the `.river-credit` div inside `.river-wrap`.
+- `app/globals.css`: `.river-credit` (10.5px, 45% cream, bottom
+  right, pointer-events none except the link).
+
+### Verification
+- `npm run build` — **pass, clean** (fresh `.next`, TypeScript strict +
+  lint), `/` 122 kB First Load JS. Built twice (once before, once
+  after the shimmer quietening); both clean.
+- Served a clean copy (`next start`, port 3200) and screenshotted
+  with headless Chrome 158 via CDP (real waits + scroll; the plain
+  `--screenshot` flag caught a blank pre-hydration page, and
+  `--virtual-time-budget` did not fix it — CDP with real time is the
+  way). Screenshots in `/tmp/lk-fix3/`:
+  - `f3-river-desktop.png` / `f3-river-mobile.png` — 1440×900 and
+    390×844: pale temple with gold rim, moon, swifts, the photo's
+    real reflection band with warm lamps across the top of the
+    water, dark near water with only photographic tonal variation,
+    empty-state text readable, credit line subtle bottom-right.
+  - `f3-river-overcast.png` — `?cloud=97`: cloud deck over the sky,
+    moon veiled to a faint disc, water dimmed by the veil.
+  - `f3-river-krathongs-fresh.png` / `v2-desktop-krathongs-clicked.png`
+    — two test wishes posted to the LOCAL test server only (in-memory
+    store on port 3200, never the live site): after clicking the
+    "refresh the river" pill, a gold boat with a ruby flame floats
+    over the photo and reads clearly. (The pill itself is intended
+    behaviour: new wishes wait behind it instead of yanking the
+    river.)
+  - Pixel-measured, not eyeballed: in the desktop still, gold pixels
+    in the water exist only in the top band (y 260–340, the photo's
+    reflection band + shimmer zone); below y≈385 the water is
+    R 20–40 with isolated 1px photographic streaks (R ≤ 95) — the
+    loud full-depth dash column of round 2 is gone. The new shimmer
+    code was confirmed in the served chunk (`.03+.06` alpha,
+    `i<14` loop; the `i<46` in the chunk is the hover hit-test
+    `46*l.scale+10`, not the shimmer).
+- Judged as stills against the round-2 re-audit shots (which are gone
+  from /tmp now — tmpfs was cleared — so judged against the re-audit's
+  written verdict: "flat dark panel with scratches"): the water now
+  reads as a photograph of a river at night, not a drawn panel.
+- Not verified: live-browser behaviour on a real device, and live
+  Open-Meteo weather end-to-end (headless Chrome here reaches no
+  external host; the fallback cycle rendered the scenes in these
+  shots, as in earlier rounds). Independent visual re-audit of this
+  round still outstanding — nothing is pushed or deployed.
+
+## Fix round 4, 2026-11-07 ~00:35–01:10 — a better photo + the texture restored
+
+### What the round-3 re-audit prescribed (followed exactly)
+The Chagres photo's reflection band was genuinely photographic, but
+the lower two-thirds were a black void (mid mean 14.7/stdev 6.8,
+lower 9.6/6.7) because that photo's own water is near-black below
+its reflection band; the band ended in a hard edge; the moon had no
+reflection (14 dashes at alpha 0.03–0.09, invisible); the drawn
+temple-reflection fans clashed with the photo's building reflections;
+a test boat spawned half-clipped at the panel edge with its tag cut
+off ("Au…").
+
+### 1. A better photo (tried first, as prescribed)
+Candidates measured with PIL (luminance bands) and looked at:
+- Emajõgi (current, round 3): mid 13.9/5.1, lower 6.8/2.5 — near-black.
+- Lake Bohinj / Pixabay "Moonlight on water" (jetty photo): water
+  only a middle band, glassy-smooth, jetty + bank fill the bottom
+  half — wrong subject.
+- Helford by Moonlight: good water texture on the right, but rocks
+  fill the left half and it is only 1280px wide.
+- Openverse/Flickr keyword hits: mostly mislabelled (a daytime
+  canyon, a Hubble galaxy image, Newcastle's Tyne Bridge, a pebble
+  beach) — keyword search is too noisy for this.
+- **Chosen: "Moonlight over the Chagres river", Brian Gratwicke,
+  Panama, 2015, via Wikimedia Commons** (5184×3456, CC BY 2.0):
+  a real moon glitter path runs the full depth of the water, top to
+  bottom. Measured on the water band: path column mean 57–67,
+  stdev 69–75, p95 213–222; water away from the path is dark
+  (mean 2–6, stdev 4–6) — the photo alone does not carry the lower
+  water, which is why the drawn layer is restored too (step 2).
+- Processing (PIL; the crop/grade steps are recorded here so the
+  image can be rebuilt): cropped to water only (x 0.05–0.72,
+  y 0.605–1.00 of 5184×3456, dropping the sky, moon, trees and far
+  bank); the overhanging tree silhouette in the top-right corner was
+  painted out with a mirrored patch of open dark water from the
+  left side (feathered), three small leaf tips painted out with
+  sampled dark water + noise, the patch re-toned per-row (target
+  mean 5 at the top → 14 at its bottom edge, so no step shows) and
+  desaturated 65% toward dark navy (the first re-tone had amplified
+  the mirrored patch's blue noise into a smudge); navy grade
+  (shadow gamma 0.92, R×0.86, G×0.94, B×1.10, 18% blend toward
+  #0a1030, bright path warmed toward gold, depth gradient 1.0 →
+  0.90, contrast 1.06, brightness 1.04); resized to 2200×865,
+  JPEG q82, **196 KB**. The moon path's centre in the graded asset
+  was measured (brightest 100px column band, centre x 1375 of 2200)
+  → `PATH_FRAC = 0.625`, recorded in the code.
+- Shipped locally at `public/river-night.jpg` (replaces the Emajõgi
+  file) — no hotlink, no external dependency. Credit line updated in
+  `app/page.tsx` to Brian Gratwicke, CC BY 2.0, linked to the Commons
+  file page.
+
+### 2. Ripple / moon-path layer restored over the lower water
+- The photo is no longer drawn centred: the draw is shifted
+  horizontally so the photo's moon path lands under the canvas moon
+  (0.78w) at any viewport (`dx = 0.78w − PATH_FRAC·dw`, clamped so
+  the photo still covers the rect). Without the shift the path and
+  the moon disagree by up to a quarter of the panel; with it they
+  coincide on desktop and mobile (verified in screenshots).
+- Moon column, real now: glow band alpha 0.03 → 0.10, wash 0.01 →
+  0.03, shimmer dashes 14 → 40, 20–110px wide, alpha 0.08–0.28,
+  spread over the FULL water depth (not just the top 55%).
+- Ripple arcs (90, seeded in `seedSky`, drawn after the photo):
+  shallow upward curves, pale highlight with a dark shadow twin on
+  half, 38% clustered inside the moon column (gold-tinted there),
+  base alpha 0.10–0.26, pulsing but never below 60% of base, so a
+  frozen frame still shows wave texture; they run the whole depth
+  including across the top, so there is no horizontal seam where any
+  reflection band ends.
+- Temple reflection: the 8 gold fan lines are GONE, replaced by one
+  soft vertical glow column (gold 0.05 → 0 over 110px, no strokes).
+
+### 3. Boat spawn clipping fixed
+- Non-fresh boats now spawn at `w·(0.09 + rand·0.82)` — never at
+  the panel edges.
+- Name tags are clamped inside the canvas (tag centre clamped to
+  `[tagW/2+6, w−tagW/2−6]`), so a boat drifting in from an edge
+  never has its tag cut off.
+
+### 4. Reduced-motion boats (found while verifying this round)
+Pre-existing since the photo round, not in the re-audit: in
+reduced-motion mode the scene is one static frame, but the wishes
+arrive after the first paint and nothing redrew the frame — so
+reduced-motion users saw an empty river while the header counted
+the krathongs. Fixed with a second effect that redraws the frozen
+frame whenever `wishes` change (via a `redrawRef` the main effect
+assigns). Verified live in headless Chrome with emulated
+`prefers-reduced-motion: reduce`: the static frame shows all 6
+test boats with tags, the moon path, arcs and three fixed swifts.
+(Caught a verification trap on the way: navigating to the same URL
+with only a hash change does NOT reload the document — the first
+two reduced-motion shots ran the OLD code from bfcache. The
+confirming shot used a cache-busting `?v=99` URL.)
+
+### Verification
+- `npm run build` — **pass, clean** (fresh `.next`, TypeScript
+  strict + lint), `/` 123 kB First Load JS. Built three times in
+  the delivered tree during this round (twice before, once after
+  the reduced-motion fix); the final build is the one shipping.
+- Served a clean copy (`next start`, port 3201) and screenshotted
+  with headless Chrome 158 via CDP. **Note: /tmp was cleared
+  mid-round (whole tmpfs emptied, including the round-3 re-audit
+  shots and this round's first screenshots + work copy), so the
+  evidence below was re-shot from a work copy kept under
+  `~/workspace/lk-fix4/` (screenshots, CDP scripts, server log).
+  The numbers below are from the re-shot set.**
+- Screenshots in `~/workspace/lk-fix4/`
+  (`f4-river-desktop.png`, `f4-river-desktop-later.png`,
+  `f4-river-mobile.png`, `f4-river-overcast.png`,
+  `f4-river-reduced-motion.png`, `f4-water-crop.png`):
+  - Desktop 1440×900, empty river and with 6 test boats (posted
+    to the isolated dev server's in-memory store only — the live
+    river is untouched): the moon glitter path runs the full depth
+    under the canvas moon; ripple arcs read across the lower water;
+    the water is a river, not a void; no boat or tag is clipped at
+    the panel edges; credit "River photo: Brian Gratwicke, CC BY
+    2.0" bottom-right.
+  - Mobile 390×844: path aligned under the moon, texture visible,
+    tags inside the panel.
+  - `?cloud=97`: cloud deck, moon veiled to a faint disc, water
+    dimmed, path + arcs still faintly visible — the overcast
+    behaviour holds with the new water.
+  - Reduced motion: static frame with all 6 boats (see §4).
+- Pixel-measured (PIL, desktop still, same boxes as the round-3
+  re-audit's lower-water measure):
+  - Lower water, full width: **mean 37.3, stdev 49.2** (round 3:
+    9.6/6.7; round-2 target: 35/17) — clearly above the photo's
+    numbers, comparable to round 2 on mean and far above on stdev.
+    A later frame measures 33.9/44.1 — the texture persists, not
+    a lucky frame.
+  - Lower water left of the moon path (the darkest water, no path
+    help): **mean 12.3, stdev 15.1** (round 3: 9.6/6.7) — above on
+    both, stdev more than doubled.
+  - Mid water: 41.8/50.2; top band: 55.5/51.1.
+- Judged as stills against the round-3 re-audit shots (gone from
+  /tmp with the tmpfs clear — judged against its written verdict
+  and measurements instead): the river now has a real moon path
+  down the whole depth and visible ripple texture across the lower
+  water; the hard reflection-band edge is gone (there is no band
+  any more — the path runs continuously).
+- Observations, not verdict items: far-row name tags can overlap
+  each other when two boats share a row near the temple (long
+  test names, e.g. "Tester 2" / "Tester 6" in the reduced-motion
+  shot) — pre-existing crowding, not edge clipping; the river
+  poll's "new wishes" pill counted 12 then 18 across my three
+  dev-server restarts + re-posts (localStorage last-seen + poll
+  merging in `page.tsx`, dev-test artefact, live river
+  unaffected). Neither was changed in this round.
+- Not verified: live-browser behaviour on a real device, and live
+  Open-Meteo weather end-to-end (headless Chrome here reaches no
+  external host; the fallback cycle rendered the scenes in these
+  shots, as in earlier rounds). Independent visual re-audit of this
+  round still outstanding — nothing is pushed or deployed.
+
+## Ambient audio, 2026-11-07 ~01:15–01:40 — kalimba music + firework sounds
+
+Faiq (08:12): calming Thai kalimba background music that always plays,
+plus firework sounds during the firework shows.
+
+### 1. The music — a real kalimba recording (not generative)
+- Shipped locally at `public/audio/kalimba-calm.mp3` (846 KB, 52.8 s,
+  128 kbps): "Kalimba Atmosphere" by soramoosic, **CC0 via Freesound**
+  (https://freesound.org/s/271291/) — free for any use, no attribution
+  required. Chosen from Openverse results after measuring the candidates
+  with ffmpeg: continuous playing for the whole 53 s (zero silent gaps
+  ≥1 s below −45 dB), even level (mean −23.5 dB, max −7.7 dB), quiet at
+  both ends (first 1 s −42.4 dB, last 1 s −52.1 dB), so the loop seam is
+  gentle.
+- **The Thai gap, stated plainly:** no freely-licensed track exists
+  that is both kalimba AND Thai. The one genuine Thai instrument
+  recording found — "Khim (Thai Stringed Instrument)" by stomachache,
+  CC BY, 61 s, Freesound — was measured and rejected as a loop: a 10 s
+  near-silent intro (−40.6/−41.7 dB for the first two 5 s segments),
+  uneven dynamics (−25 to −34 dB across segments, max −3.6 dB peak),
+  i.e. a demo/field recording, not a flowing piece. The generative
+  route (Web Audio kalimba in a Thai pentatonic scale) was therefore
+  the alternative, but a real kalimba recording sounds warmer than a
+  synthesised pluck, so the real CC0 kalimba shipped and the Thai
+  character is the stated limitation. If Faiq wants a Thai melody, it
+  needs a recording commissioned or a Thai track licensed, not a swap
+  from the free libraries.
+- Playback (`lib/audio.ts`): browsers block sound before the visitor
+  interacts, so the music starts on the first pointerdown/keydown
+  anywhere on the page, fades in over ~2 s to volume 0.25, and loops
+  forever. Pauses while the tab is hidden, resumes when visible (only
+  if sound is on).
+
+### 2. The firework sound — one boom per burst
+- Shipped locally at `public/audio/firework.mp3` (89 KB, 5.5 s, 128
+  kbps): "fireworks exploding 1" by soundmary, **CC0 via Freesound**
+  (https://freesound.org/s/117616/) — one explosion, loud at once
+  (mean −13.1 dB, max 0.0 dB), then crackle decay, which maps
+  one-to-one onto a burst. (The 3-bursts-in-one-file alternative was
+  CC BY and doesn't map to per-burst playback.)
+- Hook: `audio.playFirework()` is called at the top of `burst()` in
+  `components/RiverCanvas.tsx`, so it fires for the automatic
+  24 Nov 19:00–23:59 show and the hidden 5-click preview alike.
+  Throttled inside lib/audio (max ~1 per 0.8 s), volume 0.4, gated on
+  the sound preference; a 3-element pool round-robins so a new boom
+  never cuts off the previous one's tail.
+
+### 3. The toggle + preference
+- `components/SoundToggle.tsx` in the topbar, next to EN/ไทย: 🔊/🔇
+  with a label in the visitor's language (`soundOn`/`soundOff` in
+  lib/i18n.ts — EN "Sound on"/"Sound off", TH "เปิดเสียง"/"ปิดเสียง").
+  Mutes/unmutes everything. Preference persists in localStorage
+  (`loy:sound`, default ON). The component initialises to ON and syncs
+  from storage in an effect, so the server render and first client
+  render always agree (no hydration mismatch for a previously-muted
+  visitor). On narrow screens (≤560 px) the text label hides, icon only.
+- Files changed: `lib/audio.ts` (new), `components/SoundToggle.tsx`
+  (new), `public/audio/kalimba-calm.mp3` + `public/audio/firework.mp3`
+  (new), `app/page.tsx` (toggle + first-interaction effect),
+  `components/RiverCanvas.tsx` (one call in `burst()`),
+  `lib/i18n.ts` (two strings × two languages), `app/globals.css`
+  (`.sound-toggle`).
+
+### Verification (headless Chrome 158 via CDP, clean-copy `next start`)
+- `npm run build` — **pass, clean**, `/` 124 kB First Load JS (was
+  123 kB — the audio code adds ~1 kB).
+- 12/13 checks PASS in `/tmp/lk-audio/cdp_verify.py` (screenshot
+  `/tmp/lk-audio/audio-topbar.png` — the toggle sits cleanly next to
+  EN/ไทย): both audio files serve 200; toggle exists, default ON;
+  no audio elements before interaction; after a REAL click the kalimba
+  element plays (`paused === false`, currentTime 3.11 → 4.33, volume
+  0.25 after the fade); toggle OFF persists `loy:sound=off` and pauses;
+  after reload the toggle shows muted and a real click does NOT start
+  music; toggling back ON (real click = gesture) restarts it; five
+  real clicks in the river trigger the preview show and the firework
+  element plays on a burst (currentTime 0.46 → 1.50); Thai label
+  verified live ("🔊เปิดเสียง", aria-label "เปิดเสียง").
+- The 13th check (no console errors) FAILED with 12 uncaught
+  exceptions — **proven pre-existing, not from this work**: a baseline
+  copy with every audio change reverted, built and served on port
+  3203, throws the SAME 12 exceptions (React minified #425/#418/#423
+  — hydration mismatches, most likely the countdown seconds ticking
+  between SSR and hydration). The audio work adds zero new console
+  errors.
+- Not verified: how it actually sounds to a human ear (headless
+  Chrome verifies playback state, not sound); live-browser behaviour
+  on a real device. Nothing is pushed or deployed.
+
+## Fix round 5 — name tags above the temple + mobile topbar wrap (2026-11-07 ~08:47)
+
+Two honest observations from the round-4 visual re-audit, not verdict
+items. The visual round was DONE; these are the only two things touched.
+
+### 1. Far-row name tags hidden behind the temple prangs
+- Cause: the temple is an SVG overlay div layered OVER the main canvas,
+  so any tag painted on the main canvas was cut by a prang. Keeping
+  far-row boats out of the temple's x-range was rejected — boats drift
+  in x (`s.x += s.speed * drift`, wrapping and re-randomising row), so
+  a spawn-time exclusion would only hold until a boat drifted in.
+- Fix: a second canvas (`components/RiverCanvas.tsx`, `tagRef`) layered
+  above the temple overlay (DOM order: main canvas, `.temple-overlay`,
+  `canvas.river-tags`; CSS `.river-scene canvas.river-tags` absolute,
+  full box, `pointer-events: none`). The tag drawing was extracted from
+  `drawKrathong` into `drawNameTag(g, wish, s, y, sc)` and is now painted
+  in one pass at the end of `draw()`, after all boats, on the tag canvas
+  (cleared each frame; the main canvas is fully repainted by sky/water).
+  Tags are also above nearer boats now, not just above the temple. If
+  the tag canvas is ever absent, tags fall back to the main canvas (old
+  behaviour) rather than disappearing. The temple did not move; no other
+  layer changed. The tag canvas shares the main canvas's backing store
+  exactly (same w/h/dpr, set in `resize()`).
+- `app/page.tsx` / `app/globals.css`: the EN/ไทย toggle and the sound
+  toggle are wrapped in one `.top-controls` flex span (`flex-wrap:
+  nowrap`), so the sound toggle can never wrap onto its own row as a
+  lone icon; under 560px the topnav controls compact slightly
+  (links 13px, padding 7px 9px) so the pair usually fits beside the
+  links. Desktop is untouched (same row, same spacing).
+
+### Verification (headless Chrome 158 via CDP, clean-copy `next start` on port 3205)
+- `npm run build` — **pass, clean**, in the delivered tree and in the
+  clean copy, `/` 124 kB First Load JS (unchanged).
+- 12 test boats posted to the isolated dev server's in-memory store
+  only (distinct `X-Forwarded-For` IPs; live river untouched). Far row
+  is Boat-12, Boat-08, Boat-04 (row = index % 4, newest first).
+- Screenshots in `~/workspace/lk-fix5/` (`f5-river-desktop.png`,
+  `f5-river-desktop-late.png`, `f5-river-desktop-later.png`,
+  `f5-river-mobile.png`, `f5-temple-crop.png`): in every shot, every
+  far-row tag crossing the temple is fully readable, drawn over the
+  prangs — the re-audit's exact case (a tag cut by the central prang)
+  now reads "Boat-10" / "Boat-11" on the central prang's shaft, dark
+  pill with gold border, in `f5-temple-crop.png` (2x crop of the late
+  shot). Mobile: Boat-10's tag over the temple edge is fully readable.
+- Clicks still reach the main canvas through the tag layer: probe
+  (`cdp_probe.py`) shows tag canvas 674x560 = main canvas 674x560,
+  `pointer-events: none`, `elementFromPoint` over the temple returns
+  the main canvas, and a real click on a boat opened its wish panel
+  ("Test wish number 7…" — Boat-07) in `f5-click-test.png`.
+- Reduced-motion static frame (`f5-river-reduced-motion.png`,
+  `--force-prefers-reduced-motion`): boats AND tags present, Boat-04 /
+  Boat-12 tags readable over the prangs — the tag pass runs in the
+  same shared `draw()` the static frame uses.
+- Mobile topbar (`f5-topbar-mobile.png`, 390px): nav links on row 1,
+  EN/ไทย + the sound toggle (icon only, label hidden as before)
+  together on row 2 — the toggle is on the same row as EN/ไทย, no
+  longer alone. Desktop topbar (`f5-topbar-desktop.png`) is exactly
+  as before: all controls on one row.
+- Observed, pre-existing, NOT fixed (out of scope, same behaviour
+  before this round): when two boats drift close together their tags
+  can overlap each other (e.g. Boat-10/Boat-11, Boat-01/Boat-12 in
+  the shots) — tag-on-tag, not temple occlusion.
+- Not verified: live-browser behaviour on a real device. Nothing is
+  pushed or deployed.

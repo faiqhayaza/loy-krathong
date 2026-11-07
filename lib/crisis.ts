@@ -19,6 +19,14 @@ const CRISIS_TERMS: string[] = [
   "kill myself",
   "killing myself",
   "kill me",
+  // Second-person form, added in the fix round (not in the original's
+  // list, which has only first-person forms): unblocking 'kill
+  // yourself' in the denylist must not leave it floating with a poem
+  // instead of help — someone writing it is asking for the rail.
+  "kill yourself",
+  // "kys" shorthand (re-audit catch, 2026-11-06): same rail as
+  // "kill yourself" — matched with word boundaries, no false positive.
+  "kys",
   "end my life",
   "ending my life",
   "take my own life",

@@ -14,9 +14,23 @@ export const STRINGS = {
     countdownMins: 'min',
     countdownSecs: 'sec',
     countdownTonight: 'Tonight — the full moon is here',
+    // Phase banners, ported verbatim from the original site's
+    // renderBanner: the before-phase banner counts down to the
+    // festival opening (18 November), not to the full moon.
+    phaseBeforeTitle: 'The festival begins soon',
+    phaseCountdown: (days: number, hours: number) =>
+      `Bangkok opens in ${days} day${days === 1 ? '' : 's'} and ${hours} hour${hours === 1 ? '' : 's'}`,
+    phaseOpeningTitle: 'Opening night',
+    phaseOpeningBody: 'Tonight, make your krathong your own and look at the map. Bangkok opens tomorrow.',
+    phaseArchiveTitle: 'The festival has ended',
+    phaseArchiveBody:
+      'Every destination stays open to explore. Rewards you already earned can still be claimed for a little while.',
+    phaseClosedTitle: 'The festival is over. Thank you for floating with us.',
     navRiver: 'River',
     navFloat: 'Float a krathong',
     navWishes: 'Wishes',
+    soundOn: 'Sound on',
+    soundOff: 'Sound off',
     heroIntro:
       'For seven nights, one river carries every wish we float. Make a krathong, write what you hope for, and set it on the water with everyone else’s.',
     heroCta: 'Float my krathong',
@@ -99,9 +113,21 @@ export const STRINGS = {
     countdownMins: 'นาที',
     countdownSecs: 'วินาที',
     countdownTonight: 'คืนนี้ — พระจันทร์เต็มดวงมาถึงแล้ว',
+    // Phase banners, ported verbatim from the original site's
+    // renderBanner: the before-phase banner counts down to the
+    // festival opening (18 November), not to the full moon.
+    phaseBeforeTitle: 'เทศกาลใกล้เริ่มแล้ว',
+    phaseCountdown: (days: number, hours: number) => `กรุงเทพฯ จะเปิดในอีก ${days} วัน ${hours} ชั่วโมง`,
+    phaseOpeningTitle: 'คืนเปิดงาน',
+    phaseOpeningBody: 'คืนนี้ ตกแต่งกระทงของคุณและดูแผนที่ได้เลย กรุงเทพฯ จะเปิดพรุ่งนี้',
+    phaseArchiveTitle: 'เทศกาลจบลงแล้ว',
+    phaseArchiveBody: 'ทุกจุดหมายยังเปิดให้สำรวจ รางวัลที่คุณทำสำเร็จไว้แล้วยังกดรับได้อีกระยะหนึ่ง',
+    phaseClosedTitle: 'เทศกาลจบลงแล้ว ขอบคุณที่มาลอยกระทงด้วยกัน',
     navRiver: 'สายน้ำ',
     navFloat: 'ลอยกระทง',
     navWishes: 'คำอธิษฐาน',
+    soundOn: 'เปิดเสียง',
+    soundOff: 'ปิดเสียง',
     heroIntro:
       'เจ็ดค่ำคืน หนึ่งสายน้ำจะพาคำอธิษฐานของเราทุกคนไป ทำกระทงของคุณ เขียนสิ่งที่หวัง แล้วปล่อยลงน้ำไปพร้อมกับทุกคน',
     heroCta: 'ลอยกระทงของฉัน',

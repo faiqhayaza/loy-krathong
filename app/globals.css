@@ -45,6 +45,26 @@ button, input, textarea { font: inherit; color: inherit; }
 .page { max-width: 1180px; margin: 0 auto; padding: 0 16px 64px; }
 @media (min-width: 960px) { .page { padding: 0 24px 80px; } }
 
+/* Phase banner — the original site's renderBanner, in the night
+   palette: before the festival it counts down to the opening; in the
+   archive and closed phases it says so plainly. */
+.phase-banner {
+  display: flex; gap: 6px 14px; align-items: baseline; flex-wrap: wrap;
+  padding: 10px 16px; border-radius: 12px; border: 1px solid var(--line);
+  background: rgba(232, 179, 75, 0.08); color: var(--cream);
+  margin-top: 10px; font-size: 14.5px;
+}
+.phase-banner strong { font-family: var(--display); font-weight: 600; }
+.phase-banner span { color: var(--muted); }
+
+/* Closing footer — the page used to end abruptly after the wish wall. */
+.site-footer {
+  margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line-soft);
+  display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  color: var(--muted); font-size: 13.5px;
+}
+.site-footer span:first-child { font-family: var(--display); font-weight: 600; color: var(--cream); }
+
 /* Header */
 .topbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -67,6 +87,25 @@ button, input, textarea { font: inherit; color: inherit; }
   background: transparent; border: 0; color: var(--muted); padding: 7px 12px; cursor: pointer; font-weight: 600; font-size: 13px;
 }
 .lang-toggle button[aria-pressed='true'] { background: var(--gold); color: #241a00; }
+.sound-toggle {
+  display: flex; align-items: center; gap: 6px;
+  background: transparent; border: 1px solid var(--line-soft); border-radius: 999px;
+  color: var(--cream); padding: 7px 12px; cursor: pointer; font-weight: 600; font-size: 13px;
+}
+.sound-toggle:hover { background: rgba(255, 255, 255, 0.07); }
+.sound-toggle[aria-pressed='false'] { color: var(--muted); }
+/* The language toggle and the sound toggle travel as one unit, so the
+   sound toggle can never wrap onto its own row as a lone icon. */
+.top-controls { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
+@media (max-width: 560px) {
+  .sound-toggle .sound-label { display: none; }
+  /* Compact the topbar controls on small screens so the nav links and
+     the language/sound pair fit on one row. */
+  .topnav { gap: 2px; }
+  .topnav a { padding: 7px 9px; font-size: 13px; }
+  .lang-toggle button { padding: 7px 9px; }
+  .sound-toggle { padding: 7px 9px; }
+}
 
 /* Hero */
 .hero { position: relative; border-radius: 24px; overflow: hidden; margin-top: 10px; border: 1px solid var(--line-soft); }
@@ -158,13 +197,27 @@ button, input, textarea { font: inherit; color: inherit; }
 .river-wrap { position: relative; border-radius: 20px; overflow: hidden; border: 1px solid var(--line-soft); background: #0a1030; }
 .river-wrap canvas { display: block; width: 100%; height: 480px; cursor: crosshair; }
 /* The river scene: canvas plus the Wat Arun SVG illustration layered over
-   the far bank. The overlay box is positioned so the temple's base lands
-   exactly on the canvas horizon (28% of the height) and its centre at
-   30% of the width — the same spot the old canvas silhouette stood.
+   the far bank. The overlay box keeps the SVG's own aspect ratio
+   (600/380), so the temple is never squashed, and it is sized and
+   placed so the temple's base (52.6% down the SVG) lands on the canvas
+   horizon (28% of the height) and its centre at 30% of the width — the
+   same spot the old canvas silhouette stood. On desktop the box is
+   wider and taller, so the prang reads at nearly twice its old size.
    Pointer events pass through to the canvas below. */
 .river-scene { position: relative; }
-.temple-overlay { position: absolute; left: 1.5%; right: 38%; top: 8%; bottom: 54%; pointer-events: none; }
+.temple-overlay {
+  position: absolute; left: -7%; width: 78%; aspect-ratio: 600 / 380; top: 10%;
+  pointer-events: none;
+}
+@media (min-width: 960px) { .temple-overlay { left: -8.5%; width: 82%; top: -5%; } }
 .temple-overlay svg { width: 100%; height: 100%; display: block; }
+/* Name-tag canvas: same box as the main canvas (the .river-wrap canvas
+   rule sizes both), layered above the temple overlay so no tag is ever
+   cut by a prang. It never takes pointer input. */
+.river-scene canvas.river-tags {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none;
+}
 .temple-window { animation: window-glow 3.2s ease-in-out infinite; }
 @keyframes window-glow { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 @media (min-width: 960px) { .river-wrap canvas { height: 560px; } }
@@ -172,6 +225,14 @@ button, input, textarea { font: inherit; color: inherit; }
   position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between;
   gap: 8px; align-items: flex-start; pointer-events: none; z-index: 2;
 }
+/* Photo credit for the river photograph (CC BY 4.0 — the licence asks
+   for attribution where the photo is used). Tiny and muted, bottom
+   right over the dark near water; it never intercepts clicks. */
+.river-credit {
+  position: absolute; right: 10px; bottom: 8px; z-index: 2;
+  font-size: 10.5px; color: rgba(247, 241, 227, 0.45); pointer-events: none;
+}
+.river-credit a { color: inherit; pointer-events: auto; }
 .river-bar > * { pointer-events: auto; }
 .pill {
   display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px;
