@@ -12,9 +12,11 @@
 // D3 rule applied at float time: the destination the visitor chose if
 // that night is open, else tonight's destination if there is a live
 // night, else null. Until travel (F4a) exists the tag is always
-// tonight's destination or null. The ledger feeds the My wishes list
-// (C4, including `floatedOn`) and the journey card's `floated` map
-// (C2: destination → the visitor's krathong there).
+// tonight's destination or null. The ledger feeds the float form's
+// floated state (its Delete and Copy, for a return visit) and the
+// journey card's `floated` map (C2: destination → the visitor's
+// krathong there). The My wishes list it used to feed is gone —
+// the float form is the one home for the visitor's own krathong now.
 //
 // Server migration (E1/D3): when wishes carry a `destination` field
 // and are matched to the visitor by recovery ID, this ledger is
@@ -23,6 +25,7 @@
 
 import { bangkokDay } from './bangkok';
 import { calendar, defaultDestination } from './festival';
+import { DEFAULT_DESIGN, isKnownDesign } from './data';
 
 export interface MyWishEntry {
   id: string;
@@ -31,6 +34,12 @@ export interface MyWishEntry {
   flower: string;
   boat: string;
   flame: string;
+  design: string;
+  /** The wish text and name, recorded at float time — the keepsake
+      download on a return visit needs both. Old entries (before this
+      field existed) read back as ''. */
+  name: string;
+  wish: string;
   at: number;
 }
 
@@ -41,12 +50,29 @@ function parseMyWishes(raw: unknown): MyWishEntry[] {
   const out: MyWishEntry[] = [];
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue;
-    const { id, destination, day, flower, boat, flame, at } = item as Record<string, unknown>;
+    const { id, destination, day, flower, boat, flame, design, name, wish, at } = item as Record<
+      string,
+      unknown
+    >;
     if (typeof id !== 'string' || typeof day !== 'string') continue;
     if (typeof flower !== 'string' || typeof boat !== 'string' || typeof flame !== 'string') continue;
     if (typeof at !== 'number') continue;
     if (destination !== null && typeof destination !== 'string') continue;
-    out.push({ id, destination, day, flower, boat, flame, at });
+    // A design the list does not know (or an old entry without one)
+    // is the classic — the entry is kept, never dropped.
+    const designId = typeof design === 'string' && isKnownDesign(design) ? design : DEFAULT_DESIGN;
+    out.push({
+      id,
+      destination,
+      day,
+      flower,
+      boat,
+      flame,
+      design: designId,
+      name: typeof name === 'string' ? name : '',
+      wish: typeof wish === 'string' ? wish : '',
+      at,
+    });
   }
   return out;
 }
@@ -104,11 +130,12 @@ export function forgetMyWish(id: string): boolean {
  * The journey's `floated` map: destination slug → the visitor's most
  * recent krathong there. Destinations with no wish floated are absent.
  */
-export function floatedMap(): Record<string, { flower: string; boat: string }> {
-  const out: Record<string, { flower: string; boat: string }> = {};
+export function floatedMap(): Record<string, { flower: string; boat: string; design: string }> {
+  const out: Record<string, { flower: string; boat: string; design: string }> = {};
   for (const entry of loadMyWishes()) {
     if (!entry.destination) continue;
-    if (!out[entry.destination]) out[entry.destination] = { flower: entry.flower, boat: entry.boat };
+    if (!out[entry.destination])
+      out[entry.destination] = { flower: entry.flower, boat: entry.boat, design: entry.design };
   }
   return out;
 }

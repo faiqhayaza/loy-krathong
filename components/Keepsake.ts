@@ -1,9 +1,16 @@
 // Keepsake card: a 1080×1350 PNG drawn on a client canvas — night gradient,
 // moon, the krathong in its own colours, the wish wrapped, the name, and the
 // date. No server call, no images to load.
+//
+// The krathong is the CHOSEN design (lib/krathongArt — the same artwork
+// the builder preview and the river show), loaded as an image and drawn
+// large. A Swan or Lotus wish downloads a swan or a lotus, not a classic
+// boat. If the artwork image cannot load, the classic hull is drawn by
+// hand instead, so the card still downloads.
 
 import type { Wish } from '@/lib/data';
 import { boatColors, flameColor, flowerGlyph } from '@/lib/data';
+import { loadKrathongImage } from '@/lib/krathongArt';
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const words = text.split(/\s+/);
@@ -30,6 +37,9 @@ export function downloadKeepsake(wish: Wish, lang: 'en' | 'th') {
   canvas.height = H;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
+  // The nested drawClassic/finish below do not inherit this narrowing,
+  // so they draw through the captured non-null reference.
+  const g = ctx;
 
   // night sky
   const sky = ctx.createLinearGradient(0, 0, 0, H);
@@ -97,67 +107,88 @@ export function downloadKeepsake(wish: Wish, lang: 'en' | 'th') {
   ctx.fillStyle = water;
   ctx.fillRect(48, 900, W - 96, H - 948);
 
-  // krathong, drawn large
+  // The krathong, in the chosen design. The artwork (220×136) is drawn
+  // at 2.6× with its hull centre (SVG 110,87) at (cx, 1050): the hull
+  // sits in the water band, the flame clears the wish text above, and
+  // the hull clears the name below.
   const cx = W / 2;
-  const cy = 1010;
-  const sc = 3.4;
+  const cy = 1050;
+  const sc = 2.6;
   const [c1, c2] = boatColors(wish.boat);
   const fc = flameColor(wish.flame);
-  const glow = ctx.createRadialGradient(cx, cy - 26 * sc, 4, cx, cy - 26 * sc, 90);
-  glow.addColorStop(0, fc);
-  glow.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(cx, cy - 26 * sc, 90, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#f3e6c8';
-  ctx.fillRect(cx - 8, cy - 16 * sc, 16, 30);
-  ctx.fillStyle = fc;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy - 22 * sc, 12, 21, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#fff8dc';
-  ctx.beginPath();
-  ctx.ellipse(cx, cy - 18 * sc, 5, 10, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.font = `${Math.round(20 * sc)}px serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(flowerGlyph(wish.flower), cx, cy - 4 * sc);
-  ctx.fillStyle = c1;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + 6 * sc, 30 * sc, 9 * sc, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = c2;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + 8 * sc, 30 * sc, 7 * sc, 0, 0, Math.PI);
-  ctx.fill();
 
-  // wish text, wrapped
-  ctx.fillStyle = '#f7f1e3';
-  ctx.font = '500 46px Sarabun, Prompt, sans-serif';
-  const lines = wrapText(ctx, `“${wish.wish}”`, W - 240);
-  const startY = 470;
-  lines.slice(0, 6).forEach((line, i) => {
-    ctx.fillText(line, W / 2, startY + i * 62);
-  });
+  // Fallback: the classic hull, drawn by hand at the same spot, if the
+  // artwork image cannot load.
+  function drawClassic() {
+    const glow = g.createRadialGradient(cx, cy - 26 * sc, 4, cx, cy - 26 * sc, 90);
+    glow.addColorStop(0, fc);
+    glow.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = glow;
+    g.beginPath();
+    g.arc(cx, cy - 26 * sc, 90, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#f3e6c8';
+    g.fillRect(cx - 8, cy - 16 * sc, 16, 30);
+    g.fillStyle = fc;
+    g.beginPath();
+    g.ellipse(cx, cy - 22 * sc, 12, 21, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#fff8dc';
+    g.beginPath();
+    g.ellipse(cx, cy - 18 * sc, 5, 10, 0, 0, Math.PI * 2);
+    g.fill();
+    g.font = `${Math.round(20 * sc)}px serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(flowerGlyph(wish.flower), cx, cy - 4 * sc);
+    g.fillStyle = c1;
+    g.beginPath();
+    g.ellipse(cx, cy + 6 * sc, 30 * sc, 9 * sc, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = c2;
+    g.beginPath();
+    g.ellipse(cx, cy + 8 * sc, 30 * sc, 7 * sc, 0, 0, Math.PI);
+    g.fill();
+  }
 
-  // name + date
-  const name = wish.name.trim() || (lang === 'th' ? 'ใครคนหนึ่งในกรุงเทพฯ' : 'Someone in Bangkok');
-  ctx.fillStyle = '#f6d36b';
-  ctx.font = '600 36px Prompt, Sarabun, sans-serif';
-  ctx.fillText(`— ${name}`, W / 2, 1180);
-  ctx.fillStyle = '#b6b0d4';
-  ctx.font = '400 28px Sarabun, Prompt, sans-serif';
-  ctx.fillText('Loy Krathong · 24 November 2026 · Bangkok', W / 2, 1236);
+  // Wish text, name and date, then the download — once the krathong is
+  // drawn (artwork or fallback), so the file is never half a card.
+  function finish() {
+    g.textBaseline = 'alphabetic';
+    g.fillStyle = '#f7f1e3';
+    g.font = '500 46px Sarabun, Prompt, sans-serif';
+    const lines = wrapText(g, `“${wish.wish}”`, W - 240);
+    const startY = 470;
+    lines.slice(0, 6).forEach((line, i) => {
+      g.fillText(line, W / 2, startY + i * 62);
+    });
 
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'my-krathong-card.png';
-    a.click();
-    URL.revokeObjectURL(url);
-  }, 'image/png');
+    const name = wish.name.trim() || (lang === 'th' ? 'ใครคนหนึ่งในกรุงเทพฯ' : 'Someone in Bangkok');
+    g.fillStyle = '#f6d36b';
+    g.font = '600 36px Prompt, Sarabun, sans-serif';
+    g.fillText(`— ${name}`, W / 2, 1180);
+    g.fillStyle = '#b6b0d4';
+    g.font = '400 28px Sarabun, Prompt, sans-serif';
+    g.fillText('Loy Krathong · 24 November 2026 · Bangkok', W / 2, 1236);
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'my-krathong-card.png';
+      a.click();
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  }
+
+  loadKrathongImage(wish.boat, wish.flower, wish.flame, wish.design ?? 'classic')
+    .then((img) => {
+      g.drawImage(img, cx - 110 * sc, cy - 87 * sc, 220 * sc, 136 * sc);
+      finish();
+    })
+    .catch(() => {
+      drawClassic();
+      finish();
+    });
 }

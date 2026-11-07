@@ -1,9 +1,9 @@
-// The visitor's krathong choices (flower / boat / flame), kept on this
-// device — one shared source of truth for the builder (which auto-saves
-// on every change) and the My Krathong panel (Chunk C4, which stages
-// edits and saves them explicitly). Both read and write the same
-// `loy:krathong` key, so the two editors can never disagree about what
-// the krathong is — only about when an edit lands.
+// The visitor's krathong choices (flower / boat / flame / design), kept
+// on this device — the float form's own source of truth: the builder
+// auto-saves on every change, so a return visit finds the same krathong
+// picked. (The My Krathong panel used to stage edits and save them
+// explicitly against the same `loy:krathong` key; it was removed — the
+// float form is the one editor now, so there is nothing to disagree with.)
 //
 // The server save of the krathong (POST api/krathong) comes with E1;
 // until then this device-local key is the krathong.
@@ -11,10 +11,12 @@
 import {
   BOATS,
   DEFAULT_BOAT,
+  DEFAULT_DESIGN,
   DEFAULT_FLAME,
   DEFAULT_FLOWER,
   FLAMES,
   isAllowedCustomEmoji,
+  isKnownDesign,
   isKnownFlower,
 } from './data';
 
@@ -22,6 +24,7 @@ export interface KrathongChoice {
   flower: string;
   boat: string;
   flame: string;
+  design: string;
 }
 
 export const KRATHONG_KEY = 'loy:krathong';
@@ -30,6 +33,7 @@ export const DEFAULT_KRATHONG: KrathongChoice = {
   flower: DEFAULT_FLOWER,
   boat: DEFAULT_BOAT,
   flame: DEFAULT_FLAME,
+  design: DEFAULT_DESIGN,
 };
 
 /** The stored krathong, or the defaults when nothing is stored yet. */
@@ -38,7 +42,7 @@ export function loadKrathongChoice(): KrathongChoice {
   try {
     const raw = localStorage.getItem(KRATHONG_KEY);
     if (!raw) return { ...DEFAULT_KRATHONG };
-    const parsed = JSON.parse(raw) as { flower?: unknown; boat?: unknown; flame?: unknown };
+    const parsed = JSON.parse(raw) as { flower?: unknown; boat?: unknown; flame?: unknown; design?: unknown };
     const flower =
       typeof parsed.flower === 'string' &&
       (isKnownFlower(parsed.flower) || isAllowedCustomEmoji(parsed.flower))
@@ -52,7 +56,11 @@ export function loadKrathongChoice(): KrathongChoice {
       typeof parsed.flame === 'string' && FLAMES.some((f) => f.id === parsed.flame)
         ? parsed.flame
         : DEFAULT_FLAME;
-    return { flower, boat, flame };
+    const design =
+      typeof parsed.design === 'string' && isKnownDesign(parsed.design)
+        ? parsed.design
+        : DEFAULT_DESIGN;
+    return { flower, boat, flame, design };
   } catch {
     return { ...DEFAULT_KRATHONG };
   }
@@ -63,8 +71,8 @@ export function saveKrathongChoice(choice: KrathongChoice): boolean {
   if (typeof window === 'undefined') return false;
   try {
     localStorage.setItem(KRATHONG_KEY, JSON.stringify(choice));
-    // Tell the other editor (the builder, or the panel) that the
-    // krathong changed, so the two never show different colours.
+    // Tell the builder the krathong changed (it re-reads the choice),
+    // so the form preview and the saved choice never disagree.
     window.dispatchEvent(new Event('loy:krathong-changed'));
     return true;
   } catch {

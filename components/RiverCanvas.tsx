@@ -63,18 +63,20 @@ import { audio } from '@/lib/audio';
 
 // The river boats are the SAME artwork as the builder preview
 // (lib/krathongArt): the SVG markup, minus glow and flame, loaded as
-// an image and drawn on the canvas. One image per boat|flower variant,
-// cached for the session; the flame is drawn separately (below) so it
+// an image and drawn on the canvas. One image per boat|flower|design
+// variant, cached for the session; the flame is drawn separately (below) so it
 // can flicker with the wind. The image loads async — a boat whose
 // image is not ready yet is skipped for that frame and appears once
 // loaded, so no wish is ever drawn as the old procedural boat.
 const krathongImageCache = new Map<string, HTMLImageElement>();
-function krathongImage(boat: string, flower: string, flame: string): HTMLImageElement {
-  const key = `${boat}|${flower}`;
+function krathongImage(boat: string, flower: string, flame: string, design: string = 'classic'): HTMLImageElement {
+  const key = `${design}|${boat}|${flower}`;
   let img = krathongImageCache.get(key);
   if (!img) {
     img = new Image();
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(krathongSvgDocument(boat, flower, flame));
+    img.src =
+      'data:image/svg+xml;charset=utf-8,' +
+      encodeURIComponent(krathongSvgDocument(boat, flower, flame, design));
     krathongImageCache.set(key, img);
   }
   return img;
@@ -782,7 +784,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         seen.add(wish.id);
         // Start the boat artwork loading now, so it is ready by the
         // first draw frame (see drawKrathong).
-        krathongImage(wish.boat, wish.flower, wish.flame);
+        krathongImage(wish.boat, wish.flower, wish.flame, wish.design);
         if (!sprites.has(wish.id)) {
           const row = i % ROWS;
           const fresh = wish.id === highlightRef.current;
@@ -820,11 +822,13 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         tagCanvas.height = Math.max(1, Math.round(h * dpr));
         tagCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
-      // The shader canvas shares the box; its backing store is capped
-      // at 1.75x like the attached scene (the fbm shader is the dear
-      // part to rasterise).
+      // The shader canvas shares the box at the same devicePixelRatio
+      // as the main canvas: at 1.75x it rendered 683px wide on a 390px
+      // mobile screen (DSF 2, 780 physical px) and the browser upscaled
+      // it ~1.14x, which read as a soft river. Full DPR costs more
+      // shader pixels, but the water is the bottom third of the scene.
       if (waterCanvas) {
-        const wdpr = Math.min(window.devicePixelRatio || 1, 1.75);
+        const wdpr = Math.min(window.devicePixelRatio || 1, 2);
         waterCanvas.width = Math.max(1, Math.round(w * wdpr));
         waterCanvas.height = Math.max(1, Math.round(h * wdpr));
       }
@@ -931,10 +935,11 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       const wind = weatherRef.current.windShown;
 
       // The boat is the builder's krathong artwork (lib/krathongArt) as
-      // an image — hull, candle, two flowers, rim and veins, exactly as
-      // the preview shows them. It loads async; until it is ready the
-      // boat is skipped for that frame and appears once loaded.
-      const img = krathongImage(wish.boat, wish.flower, wish.flame);
+      // an image — the wish's own design (hull, candle, flowers, rim
+      // and veins), exactly as the preview shows it. It loads async;
+      // until it is ready the boat is skipped for that frame and
+      // appears once loaded.
+      const img = krathongImage(wish.boat, wish.flower, wish.flame, wish.design);
       if (!img.complete || img.naturalWidth === 0) return;
       const w = 66 * sc;
       const h = (w * KRATHONG_VIEWBOX.h) / KRATHONG_VIEWBOX.w;

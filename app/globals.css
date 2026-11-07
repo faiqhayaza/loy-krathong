@@ -916,43 +916,48 @@ button, input, textarea { font: inherit; color: inherit; }
 .journey-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; color: var(--ink); font-size: 15.5px; }
 .journey-lines .journey-notyet { color: var(--muted); font-size: 13.5px; }
 
-/* My Krathong panel. */
-.my-krathong h3 { font-size: 18px; color: var(--cream); margin: 22px 0 10px; }
-.mk-identity {
+/* The float form's design picker: five krathong shapes, each shown as
+   a small live preview (the same KrathongSvg as the form preview) so
+   the visitor picks by sight, not by name. Modelled on .tiles — but
+   the previews are wider, so the grid drops to two columns on a phone. */
+.design-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+@media (max-width: 640px) { .design-tiles { grid-template-columns: repeat(2, 1fr); } }
+.design-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px;
+  border-radius: 12px; border: 2px solid transparent; background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+}
+.design-tile:hover { border-color: rgba(239, 232, 216, 0.3); }
+.design-tile[aria-pressed='true'] { border-color: var(--gold); background: rgba(232, 179, 75, 0.14); }
+.design-tile .tlabel { font-size: 10.5px; color: var(--muted); line-height: 1.25; text-align: center; }
+
+/* The floated krathong's own row: the recovery-ID copy and the
+   owner-delete. These lived in the My Krathong panel, which was
+   removed (it duplicated the float form); they now sit with the
+   floated krathong in the float form, where the visitor is. */
+.floated-own {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   padding: 10px 14px; border: 1px solid var(--line-soft); border-radius: 12px;
-  background: var(--card); color: var(--ink); font-size: 14.5px; margin-bottom: 16px;
+  background: var(--card); color: var(--ink); font-size: 14.5px; margin-top: 16px;
 }
-.mk-identity code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--gold-soft); letter-spacing: 0.08em; }
-.mk-editor { display: grid; gap: 20px; }
-@media (min-width: 760px) { .mk-editor { grid-template-columns: 240px 1fr; } }
-/* The pickers' labels are <p class="picker-label">, which carries no
-   margin — the groups ran together with no gap between them. */
-.mk-pickers .picker-label { margin: 18px 0 8px; }
-.mk-pickers .picker-label:first-child { margin-top: 0; }
-.mk-pickers .btn.primary { margin-top: 14px; }
-.my-wishes { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.my-wish {
-  display: flex; align-items: flex-start; gap: 14px;
-  padding: 12px 14px; border: 1px solid var(--line-soft);
-  border-radius: 14px; background: var(--card);
-}
-.my-wish-krathong {
-  flex: none; width: 52px; height: 52px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; font-size: 26px;
-}
-.my-wish-info { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
-.my-wish-text { color: var(--cream); font-size: 15px; line-height: 1.5; }
-.my-wish-meta { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
-.my-wish-chip { color: var(--ink); background: rgba(239, 232, 216, 0.08); border-radius: 999px; padding: 1px 8px; font-size: 12.5px; }
+.floated-own code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--gold-soft); letter-spacing: 0.08em; }
+.floated-own .own-actions { display: flex; gap: 8px; align-items: center; }
 @media (min-width: 960px) {
   .special-card.finale { grid-column: 1 / -1; }
 }
 .special-card.finale {
   border-color: var(--line);
   background: linear-gradient(180deg, rgba(232, 179, 75, 0.12), rgba(232, 179, 75, 0.03));
-  align-items: center; text-align: center;
-  padding: 16px 24px;
+  /* The card is a grid child, so its box already spans the grid width —
+     but align-items: center shrank every child (button, text) to its
+     content width and centred it, and the wider 24px side padding
+     narrowed it further, so the visible card read as inset with dead
+     space on the sides. Stretch like the other cards (their buttons
+     span full width) and keep the text centred; only the night label
+     needs its own centring now that it stretches too. */
+  text-align: center;
+  padding: 16px;
 }
+.special-card.finale .special-night { justify-content: center; }
 .special-card.finale p { max-width: 56ch; }
 .special-card.finale .btn { min-width: 240px; }

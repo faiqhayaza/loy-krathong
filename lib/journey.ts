@@ -53,7 +53,7 @@ export interface Journey {
   /** Whether the visitor floated today. */
   floatedToday: boolean;
   /** Destination slug → the visitor's most recent krathong there. */
-  floated: Record<string, { flower: string; boat: string }>;
+  floated: Record<string, { flower: string; boat: string; design: string }>;
   /** How many wishes this device floated. */
   wishesFloated: number;
   /** Which journey fields are still waiting on another chunk. */

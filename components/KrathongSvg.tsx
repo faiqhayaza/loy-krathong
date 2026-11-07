@@ -1,5 +1,5 @@
-// A hand-drawn krathong as inline SVG: a banana-leaf boat in the chosen
-// colours, the chosen flower, and a candle flame that flickers (CSS).
+// A hand-drawn krathong as inline SVG: the chosen design, in the chosen
+// boat colours, with the chosen flower, and a candle flame that flickers (CSS).
 //
 // The artwork itself lives in lib/krathongArt — the same markup the
 // river canvas draws — so the builder preview and the boats on the
@@ -11,11 +11,12 @@ interface Props {
   boat: string;
   flower: string;
   flame: string;
+  design?: string;
   name?: string;
   width?: number;
 }
 
-export default function KrathongSvg({ boat, flower, flame, name, width = 220 }: Props) {
+export default function KrathongSvg({ boat, flower, flame, design = 'classic', name, width = 220 }: Props) {
   const label = name?.trim() ? name.trim() : '';
 
   return (
@@ -25,7 +26,7 @@ export default function KrathongSvg({ boat, flower, flame, name, width = 220 }: 
       viewBox="0 0 220 136"
       role="img"
       aria-label={label ? `Krathong for ${label}` : 'Krathong preview'}
-      dangerouslySetInnerHTML={{ __html: krathongInnerMarkup(boat, flower, flame) }}
+      dangerouslySetInnerHTML={{ __html: krathongInnerMarkup(boat, flower, flame, { design }) }}
     />
   );
 }

@@ -20,6 +20,8 @@ export interface Wish {
   flower: string;
   boat: string;
   flame: string;
+  /** The krathong design (one of DESIGNS). Absent on old wishes: classic. */
+  design?: string;
   lang: Lang;
   createdAt: number;
   reactions: ReactionCounts;
@@ -119,6 +121,20 @@ export const FLAMES: Flame[] = [
   { id: 'white', color: '#f4f7ff', label: { en: 'Moon white', th: 'ขาวจันทรา' } },
 ];
 export const DEFAULT_FLAME = 'gold';
+
+export interface KrathongDesign {
+  id: string;
+  label: { en: string; th: string };
+}
+
+export const DESIGNS: KrathongDesign[] = [
+  { id: 'classic', label: { en: 'Classic', th: 'คลาสสิก' } },
+  { id: 'lotus', label: { en: 'Lotus bloom', th: 'บัวบาน' } },
+  { id: 'swan', label: { en: 'Swan', th: 'หงส์' } },
+  { id: 'basket', label: { en: 'Flower basket', th: 'ตะกร้าดอกไม้' } },
+  { id: 'canoe', label: { en: 'Leaf canoe', th: 'เรือใบไม้' } },
+];
+export const DEFAULT_DESIGN = 'classic';
 
 export const REACTIONS: { id: ReactionId; glyph: string; label: { en: string; th: string } }[] = [
   { id: 'sathu', glyph: '🙏', label: { en: 'Sathu', th: 'สาธุ' } },
@@ -333,6 +349,9 @@ export function isKnownBoat(id: string): boolean {
 }
 export function isKnownFlame(id: string): boolean {
   return FLAMES.some((f) => f.id === id);
+}
+export function isKnownDesign(id: string): boolean {
+  return DESIGNS.some((d) => d.id === id);
 }
 export function isKnownReaction(id: string): id is ReactionId {
   return REACTIONS.some((r) => r.id === id);

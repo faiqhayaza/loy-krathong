@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   DEFAULT_BOAT,
+  DEFAULT_DESIGN,
   DEFAULT_FLAME,
   DEFAULT_FLOWER,
   EMPTY_REACTIONS,
@@ -9,6 +10,7 @@ import {
   containsBlocked,
   isAllowedCustomEmoji,
   isKnownBoat,
+  isKnownDesign,
   isKnownFlame,
   isKnownFlower,
   type Lang,
@@ -65,6 +67,9 @@ export async function POST(req: NextRequest) {
       : DEFAULT_FLOWER;
   const boat = typeof body.boat === 'string' && isKnownBoat(body.boat) ? body.boat : DEFAULT_BOAT;
   const flame = typeof body.flame === 'string' && isKnownFlame(body.flame) ? body.flame : DEFAULT_FLAME;
+  // A design the list does not know (or none sent) is the classic —
+  // old clients and old wishes keep floating as the classic boat.
+  const design = typeof body.design === 'string' && isKnownDesign(body.design) ? body.design : DEFAULT_DESIGN;
   const lang: Lang = body.lang === 'th' ? 'th' : 'en';
 
   if (wishRaw.length < 1 || wishRaw.length > MAX_WISH_CHARS) {
@@ -110,6 +115,7 @@ export async function POST(req: NextRequest) {
     flower,
     boat,
     flame,
+    design,
     lang,
     createdAt: Date.now(),
     reactions: { ...EMPTY_REACTIONS },

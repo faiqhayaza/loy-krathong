@@ -75,6 +75,7 @@ export const STRINGS = {
     flowerCustomPlaceholder: '😀',
     flowerCustomHint: 'A single emoji becomes your krathong flower.',
     boatLabel: 'Choose your boat colour',
+    designLabel: 'Choose your krathong design',
     flameLabel: 'Your flame colour today',
     submit: 'Float my krathong',
     submitting: 'Floating…',
@@ -110,7 +111,7 @@ export const STRINGS = {
     close: 'Close',
     yourKrathong: 'Your krathong',
     readWish: 'Read this wish',
-    // --- Chunk C: secrets, journey, welcome, My Krathong ---
+    // --- Chunk C: secrets, journey, welcome ---
     secretsTitle: 'Hidden secrets',
     secretsIntro:
       'Each destination hides one secret. Something glimmers on the river tonight — find it, answer its riddle, and it adds light to tonight.',
@@ -147,25 +148,15 @@ export const STRINGS = {
     cardSaved: 'Card saved',
     welcomeArrived: (name: string) => `Welcome to ${name}`,
     welcomeNight: (n: number) => `Night ${n}`,
-    myKrathongTitle: 'My Krathong',
-    myKrathongIntro:
-      'Your krathong, your wishes, your key. Everything here lives on this device for now — the river will remember it for you once the festival account arrives.',
-    saveKrathong: 'Save my krathong',
-    krathongSaved: 'Saved. Your krathong keeps these colours on every journey.',
+    // The recovery-ID copy and the owner-delete live with the floated
+    // krathong in the float form now (the My Krathong panel is gone).
     myKeyLabel: 'Your key (10 digits)',
     copyKey: 'Copy',
     copiedKey: 'Copied ✓',
-    myWishes: 'My wishes',
-    noWishes: 'You haven’t floated a wish yet.',
-    reactionsReceived: (n: number) => (n === 0 ? 'No reactions yet' : `${n} reaction${n === 1 ? '' : 's'}`),
-    lanternsNote: 'Blessing lanterns from friends arrive with night 3.',
     deleteWish: 'Delete',
     deleteConfirm: 'Tap again to remove',
     deleteRemoved: 'Your krathong is removed from the river. You can float a new one.',
     deleteError: 'Could not remove it. Please try again.',
-    beforeFestival: 'Before the festival',
-    floatedOn: (place: string, river: string) => `${place} · ${river}`,
-    yourKrathongHere: 'Your krathong here',
     // Missions + milestones (chunk A). The milestone total is device-local
     // until E1 — milestoneLocalNote says so plainly, in both languages.
     missionsTitle: 'Tonight’s missions',
@@ -327,6 +318,7 @@ export const STRINGS = {
     flowerCustomPlaceholder: '😀',
     flowerCustomHint: 'อีโมจิเดียวจะกลายเป็นดอกไม้บนกระทงของคุณ',
     boatLabel: 'เลือกสีกระทง',
+    designLabel: 'เลือกรูปแบบกระทง',
     flameLabel: 'สีเปลวเทียนของคุณวันนี้',
     submit: 'ลอยกระทงของฉัน',
     submitting: 'กำลังลอย…',
@@ -362,7 +354,7 @@ export const STRINGS = {
     close: 'ปิด',
     yourKrathong: 'กระทงของคุณ',
     readWish: 'อ่านคำอธิษฐานนี้',
-    // --- Chunk C: secrets, journey, welcome, My Krathong ---
+    // --- Chunk C: secrets, journey, welcome ---
     secretsTitle: 'ความลับที่ซ่อนอยู่',
     secretsIntro:
       'แต่ละจุดหมายซ่อนความลับไว้หนึ่งอย่าง มีบางสิ่งระยิบระยับอยู่บนสายน้ำคืนนี้ — หาให้เจอ ตอบปริศนาของมัน แล้วมันจะเพิ่มแสงให้คืนนี้',
@@ -399,25 +391,13 @@ export const STRINGS = {
     cardSaved: 'บันทึกการ์ดแล้ว',
     welcomeArrived: (name: string) => `ยินดีต้อนรับสู่${name}`,
     welcomeNight: (n: number) => `คืนที่ ${n}`,
-    myKrathongTitle: 'กระทงของฉัน',
-    myKrathongIntro:
-      'กระทงของคุณ คำอธิษฐานของคุณ กุญแจของคุณ ทุกอย่างที่นี่อยู่ในอุปกรณ์นี้ก่อน — สายน้ำจะจดจำไว้ให้คุณเมื่อบัญชีเทศกาลมาถึง',
-    saveKrathong: 'บันทึกกระทงของฉัน',
-    krathongSaved: 'บันทึกแล้ว กระทงของคุณจะคงสีเหล่านี้ไว้ทุกการเดินทาง',
     myKeyLabel: 'กุญแจของคุณ (10 หลัก)',
     copyKey: 'คัดลอก',
     copiedKey: 'คัดลอกแล้ว ✓',
-    myWishes: 'คำอธิษฐานของฉัน',
-    noWishes: 'คุณยังไม่ได้ลอยคำอธิษฐานเลย',
-    reactionsReceived: (n: number) => (n === 0 ? 'ยังไม่มีใครส่งความรู้สึก' : `${n} ความรู้สึก`),
-    lanternsNote: 'โคมอวยพรจากเพื่อน ๆ จะมาในคืนที่ 3',
     deleteWish: 'ลบ',
     deleteConfirm: 'แตะอีกครั้งเพื่อลบ',
     deleteRemoved: 'ลบกระทงของคุณออกจากแม่น้ำแล้ว คุณสามารถลอยกระทงใหม่ได้',
     deleteError: 'ลบไม่ได้ กรุณาลองอีกครั้ง',
-    beforeFestival: 'ก่อนเทศกาลเริ่ม',
-    floatedOn: (place: string, river: string) => `${place} · ${river}`,
-    yourKrathongHere: 'กระทงของคุณอยู่ตรงนี้',
     // Missions + milestones (chunk A). The milestone total is device-local
     // until E1 — milestoneLocalNote says so plainly, in both languages.
     missionsTitle: 'ภารกิจคืนนี้',

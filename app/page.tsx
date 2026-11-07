@@ -29,7 +29,6 @@ import SecretDialog from '@/components/SecretDialog';
 import SecretsPanel from '@/components/SecretsPanel';
 import WelcomeDialog from '@/components/WelcomeDialog';
 import JourneyCard from '@/components/JourneyCard';
-import MyKrathong from '@/components/MyKrathong';
 import { MilestoneCard, MissionsAll, MissionsPanel, panelDay, useMissionsVersion } from '@/components/Missions';
 import { loadClaims, milestoneFor } from '@/lib/missions';
 import { getIdentity, getVisitorId } from '@/lib/identity';
@@ -615,14 +614,22 @@ export default function Page() {
           <div className="hero-actions">
             <a className="btn primary" href="#float">{s.heroCta} 🪷</a>
             <a className="btn ghost" href="#river">{s.heroSeeRiver}</a>
+            {/* The journey card used to open from the My Krathong section
+                (removed — it duplicated the float form). It opens from
+                the hero now, next to the two main actions: the card is
+                the visitor's own summary, and the hero is where it is seen. */}
+            <button type="button" className="btn ghost" onClick={() => setShowJourney(true)}>
+              {s.journeyOpen}
+            </button>
           </div>
         </div>
       </section>
 
       {/* The river — full-width, directly under the hero: it is the
-          heart of the night. The float form sits below it, and My
-          Krathong follows the form, so the flow reads: see the river,
-          float your krathong, find it on the river and in your panel. */}
+          heart of the night. The float form sits below it, and the
+          floated krathong — with its keepsake, copy and delete — stays
+          in the form, so the flow reads: see the river, float your
+          krathong, find it on the river and in the form. */}
       <section
         className="river-section reveal"
         id="river"
@@ -753,19 +760,6 @@ export default function Page() {
             <MilestoneCard lang={lang} cal={cal} day={milestoneDay} />
           </div>
         </div>
-      </section>
-
-      {/* My Krathong (Chunk C4) + journey card (C2). */}
-      <section className="section reveal" id="my-krathong" aria-labelledby="my-krathong-title">
-        <p className="kicker">My krathong</p>
-        <div className="section-head">
-          <h2 id="my-krathong-title">{s.myKrathongTitle}</h2>
-          <button type="button" className="btn ghost" onClick={() => setShowJourney(true)}>
-            {s.journeyOpen}
-          </button>
-        </div>
-        <p className="section-intro">{s.myKrathongIntro}</p>
-        <MyKrathong lang={lang} wishes={wishes} />
       </section>
 
       {/* Seven destinations */}

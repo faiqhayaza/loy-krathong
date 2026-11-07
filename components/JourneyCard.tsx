@@ -22,6 +22,7 @@ import type { FestivalCalendar } from '@/lib/festival';
 import { t } from '@/lib/i18n';
 import type { Journey } from '@/lib/journey';
 import { recordEvent } from '@/lib/events';
+import { loadKrathongImage } from '@/lib/krathongArt';
 import KrathongSvg from './KrathongSvg';
 
 interface Props {
@@ -56,6 +57,9 @@ export function downloadJourneyCard(journey: Journey, lang: Lang) {
   canvas.height = H;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
+  // The nested drawClassic/finish below do not inherit this narrowing,
+  // so they draw through the captured non-null reference.
+  const g = ctx;
 
   const sky = ctx.createLinearGradient(0, 0, 0, H);
   sky.addColorStop(0, '#070a1f');
@@ -91,87 +95,112 @@ export function downloadJourneyCard(journey: Journey, lang: Lang) {
   ctx.font = '400 32px Prompt, Sarabun, sans-serif';
   ctx.fillText('เจ็ดค่ำคืนแห่งคำอธิษฐานของฉัน', W / 2, 168);
 
-  // krathong, drawn large
+  // The krathong, in the chosen design (lib/krathongArt — the same
+  // artwork the card's dialog shows), loaded as an image and drawn
+  // large. The artwork (220×136) is drawn at 2× with its hull centre
+  // (SVG 110,87) at (cx, 420): it clears the title above and the
+  // stamp grid below. If it cannot load, the classic hull is drawn
+  // by hand instead, so the card still downloads.
   const cx = W / 2;
   const cy = 420;
-  const sc = 3.0;
-  const [c1, c2] = boatColors(journey.krathong.boat);
-  ctx.font = `${Math.round(20 * sc)}px serif`;
-  ctx.textBaseline = 'middle';
-  ctx.fillText(flowerGlyph(journey.krathong.flower), cx, cy - 4 * sc);
-  ctx.fillStyle = c1;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + 6 * sc, 30 * sc, 9 * sc, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = c2;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + 8 * sc, 30 * sc, 7 * sc, 0, 0, Math.PI);
-  ctx.fill();
+  const sc = 2.0;
+  const k = journey.krathong;
+  const [c1, c2] = boatColors(k.boat);
 
-  // 7-destination stamp grid
-  const cell = 120;
-  const gap = 16;
-  const gridW = 7 * cell + 6 * gap;
-  const gx = (W - gridW) / 2;
-  const gy = 560;
-  DESTINATIONS.forEach((d, i) => {
-    const x = gx + i * (cell + gap);
-    const stamped = journey.stamps.includes(d.id);
-    const visited = journey.visited.includes(d.id);
-    ctx.fillStyle = stamped
-      ? 'rgba(232, 179, 75, 0.28)'
-      : visited
-        ? 'rgba(239, 232, 216, 0.10)'
-        : 'rgba(239, 232, 216, 0.04)';
-    ctx.strokeStyle = stamped ? '#e8b34b' : 'rgba(239, 232, 216, 0.25)';
-    ctx.lineWidth = stamped ? 3 : 1;
-    ctx.beginPath();
-    ctx.roundRect(x, gy, cell, cell, 14);
-    ctx.fill();
-    ctx.stroke();
-    ctx.font = '44px serif';
-    ctx.fillStyle = stamped ? '#f6d36b' : visited ? '#cfc8e8' : 'rgba(182, 176, 212, 0.5)';
-    ctx.fillText(STAMP_ICON[d.id], x + cell / 2, gy + cell / 2 - 8);
-    ctx.font = '600 20px Prompt, Sarabun, sans-serif';
-    ctx.fillStyle = stamped ? '#f6d36b' : '#b6b0d4';
-    ctx.fillText(`Night ${d.day}`, x + cell / 2, gy + cell - 18);
-  });
+  function drawClassic() {
+    g.font = `${Math.round(20 * sc)}px serif`;
+    g.textBaseline = 'middle';
+    g.fillText(flowerGlyph(k.flower), cx, cy - 4 * sc);
+    g.fillStyle = c1;
+    g.beginPath();
+    g.ellipse(cx, cy + 6 * sc, 30 * sc, 9 * sc, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = c2;
+    g.beginPath();
+    g.ellipse(cx, cy + 8 * sc, 30 * sc, 7 * sc, 0, 0, Math.PI);
+    g.fill();
+  }
 
-  // the lines
-  const s = t(lang);
-  const lines = [
-    s.journeyVisited(journey.visited.length),
-    s.journeyStamps(journey.stamps.length),
-    s.journeySecrets(journey.secrets.length),
-    s.journeyDays(journey.participationDays),
-    s.journeyRiverLight(journey.riverLight),
-  ];
-  ctx.fillStyle = '#f7f1e3';
-  ctx.font = '500 40px Sarabun, Prompt, sans-serif';
-  lines.forEach((line, i) => {
-    ctx.fillText(line, W / 2, 800 + i * 64);
-  });
+  // The stamp grid, the lines, the tagline and the download — once
+  // the krathong is drawn (artwork or fallback), so the file is never
+  // half a card.
+  function finish() {
+    g.textBaseline = 'alphabetic';
+    // 7-destination stamp grid
+    const cell = 120;
+    const gap = 16;
+    const gridW = 7 * cell + 6 * gap;
+    const gx = (W - gridW) / 2;
+    const gy = 560;
+    DESTINATIONS.forEach((d, i) => {
+      const x = gx + i * (cell + gap);
+      const stamped = journey.stamps.includes(d.id);
+      const visited = journey.visited.includes(d.id);
+      g.fillStyle = stamped
+        ? 'rgba(232, 179, 75, 0.28)'
+        : visited
+          ? 'rgba(239, 232, 216, 0.10)'
+          : 'rgba(239, 232, 216, 0.04)';
+      g.strokeStyle = stamped ? '#e8b34b' : 'rgba(239, 232, 216, 0.25)';
+      g.lineWidth = stamped ? 3 : 1;
+      g.beginPath();
+      g.roundRect(x, gy, cell, cell, 14);
+      g.fill();
+      g.stroke();
+      g.font = '44px serif';
+      g.fillStyle = stamped ? '#f6d36b' : visited ? '#cfc8e8' : 'rgba(182, 176, 212, 0.5)';
+      g.fillText(STAMP_ICON[d.id], x + cell / 2, gy + cell / 2 - 8);
+      g.font = '600 20px Prompt, Sarabun, sans-serif';
+      g.fillStyle = stamped ? '#f6d36b' : '#b6b0d4';
+      g.fillText(`Night ${d.day}`, x + cell / 2, gy + cell - 18);
+    });
 
-  // tagline
-  ctx.fillStyle = '#b6b0d4';
-  ctx.font = '400 30px Sarabun, Prompt, sans-serif';
-  const tag = wrapText(ctx, s.journeyTagline, W - 240);
-  tag.forEach((line, i) => {
-    ctx.fillText(line, W / 2, 1160 + i * 44);
-  });
-  ctx.fillStyle = '#b6b0d4';
-  ctx.font = '400 26px Sarabun, Prompt, sans-serif';
-  ctx.fillText('Loy Krathong · 24 November 2026 · Bangkok', W / 2, 1268);
+    // the lines
+    const s = t(lang);
+    const lines = [
+      s.journeyVisited(journey.visited.length),
+      s.journeyStamps(journey.stamps.length),
+      s.journeySecrets(journey.secrets.length),
+      s.journeyDays(journey.participationDays),
+      s.journeyRiverLight(journey.riverLight),
+    ];
+    g.fillStyle = '#f7f1e3';
+    g.font = '500 40px Sarabun, Prompt, sans-serif';
+    lines.forEach((line, i) => {
+      g.fillText(line, W / 2, 800 + i * 64);
+    });
 
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'my-journey-card.png';
-    a.click();
-    URL.revokeObjectURL(url);
-  }, 'image/png');
+    // tagline
+    g.fillStyle = '#b6b0d4';
+    g.font = '400 30px Sarabun, Prompt, sans-serif';
+    const tag = wrapText(g, s.journeyTagline, W - 240);
+    tag.forEach((line, i) => {
+      g.fillText(line, W / 2, 1160 + i * 44);
+    });
+    g.fillStyle = '#b6b0d4';
+    g.font = '400 26px Sarabun, Prompt, sans-serif';
+    g.fillText('Loy Krathong · 24 November 2026 · Bangkok', W / 2, 1268);
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'my-journey-card.png';
+      a.click();
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  }
+
+  loadKrathongImage(k.boat, k.flower, k.flame, k.design ?? 'classic')
+    .then((img) => {
+      g.drawImage(img, cx - 110 * sc, cy - 87 * sc, 220 * sc, 136 * sc);
+      finish();
+    })
+    .catch(() => {
+      drawClassic();
+      finish();
+    });
 }
 
 export default function JourneyCard({ lang, cal, journey, onClose }: Props) {
@@ -203,6 +232,7 @@ export default function JourneyCard({ lang, cal, journey, onClose }: Props) {
             boat={journey.krathong.boat}
             flower={journey.krathong.flower}
             flame={journey.krathong.flame}
+            design={journey.krathong.design}
             name=""
             width={180}
           />

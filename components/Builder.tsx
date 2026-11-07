@@ -1,7 +1,7 @@
 // "Float my krathong": the builder panel. Live SVG preview, nickname, wish,
-// a worry that never leaves the device, and flower / boat pickers.
-// The POST body contains name, wish, flower, boat, flame and lang only —
-// the worry is deliberately never included.
+// a worry that never leaves the device, and flower / boat / design pickers.
+// The POST body contains name, wish, flower, boat, flame, design and lang
+// only — the worry is deliberately never included.
 //
 // The flame is NOT picked here: the HTML float form has no flame picker
 // — the flame comes from the daily candle (chunk F1). A krathong floats
@@ -18,12 +18,15 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Lang, Wish } from '@/lib/data';
 import {
   BOATS,
+  DEFAULT_DESIGN,
+  EMPTY_REACTIONS,
   DEFAULT_FLAME,
   DEFAULT_FLOWER,
+  DESIGNS,
   FLOWERS,
   MAX_NAME_CHARS,
   MAX_WISH_CHARS,
@@ -40,7 +43,7 @@ import { getIdentity, getVisitorId } from '@/lib/identity';
 import { recordEvent } from '@/lib/events';
 import { t } from '@/lib/i18n';
 import { loadKrathongChoice, saveKrathongChoice } from '@/lib/krathong';
-import { destinationForNewWish, recordMyWish } from '@/lib/myWishes';
+import { destinationForNewWish, forgetMyWish, loadMyWishes, recordMyWish } from '@/lib/myWishes';
 import KrathongSvg from './KrathongSvg';
 import Confetti from './Confetti';
 import { downloadKeepsake } from './Keepsake';
@@ -88,10 +91,21 @@ export default function Builder({ lang, onFloated }: Props) {
   const [worry, setWorry] = useState('');
   const [flower, setFlower] = useState(() => loadKrathongChoice().flower);
   const [boat, setBoat] = useState(() => loadKrathongChoice().boat);
+  // The krathong's shape (one of DESIGNS) — picked per float, so every
+  // float can be a different design. Saved with the flower and boat, so
+  // a return visit finds the same design picked.
+  const [design, setDesign] = useState(() => loadKrathongChoice().design);
   // The flame comes from the daily candle (chunk F1), not a picker:
   // today's candle flame when one is lit, else the default gold.
   const flame = candleFlameToday() ?? DEFAULT_FLAME;
   const [submitting, setSubmitting] = useState(false);
+  // A second click before React re-renders and disables the button
+  // would send a second POST: the first claims today's slot (201),
+  // the second meets the daily limit (429) — and the 429 handler
+  // leaves the panel in "already floated" with no ledger entry and no
+  // way to delete. The ref updates synchronously, so it closes that
+  // gap; the disabled button is the visible half.
+  const submittingRef = useRef(false);
   const [error, setError] = useState('');
   const [floated, setFloated] = useState<Wish | null>(null);
   // The blessing is composed in this browser from the wish and the worry
@@ -102,6 +116,16 @@ export default function Builder({ lang, onFloated }: Props) {
   const [blessing, setBlessing] = useState('');
   const [crisis, setCrisis] = useState(false);
   const [keepsakeDone, setKeepsakeDone] = useState(false);
+  // The visitor's own krathong, once floated: the recovery-ID copy and
+  // the owner-delete. These lived in the My Krathong panel, which was
+  // removed (it duplicated this form); they now sit with the floated
+  // krathong here, where the visitor is. Two-tap delete, like before:
+  // the first tap arms it, the second removes it from the river.
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [removedNote, setRemovedNote] = useState('');
+  const [removeError, setRemoveError] = useState('');
+  const [copied, setCopied] = useState(false);
   const [floatedToday, setFloatedToday] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -114,23 +138,29 @@ export default function Builder({ lang, onFloated }: Props) {
   const [celebrate, setCelebrate] = useState(false);
 
   // Keep the krathong choices on this device, so a return visit finds
-  // the same flower and boat picked. The flame saved here is today's
-  // candle flame (or the default gold) — the builder never picks one.
-  // The My Krathong panel (Chunk C4) writes the same key with an
-  // explicit Save; when it does, this listener picks the saved choice
-  // up so the two editors never show different colours.
+  // the same flower, boat and design picked. The flame saved here is
+  // today's candle flame (or the default gold) — the builder never picks one.
   useEffect(() => {
-    saveKrathongChoice({ flower, boat, flame });
-  }, [flower, boat, flame]);
+    saveKrathongChoice({ flower, boat, flame, design });
+  }, [flower, boat, flame, design]);
 
   useEffect(() => {
     const reload = () => {
       const saved = loadKrathongChoice();
       setFlower((f) => (f === saved.flower ? f : saved.flower));
       setBoat((b) => (b === saved.boat ? b : saved.boat));
+      setDesign((d) => (d === saved.design ? d : saved.design));
     };
     window.addEventListener('loy:krathong-changed', reload);
     return () => window.removeEventListener('loy:krathong-changed', reload);
+  }, []);
+
+  // Re-read the daily stamps on mount: the state initializer runs
+  // during the server render (no localStorage there), so a return
+  // visit must not trust it alone — the readout has to show the stamp
+  // earned today, not "0 of 10".
+  useEffect(() => {
+    setStamps(loadDailyStamps());
   }, []);
 
   // Pre-fill the name from the nickname the visitor entered at sign-up
@@ -145,9 +175,9 @@ export default function Builder({ lang, onFloated }: Props) {
     });
   }, []);
 
-  // When the visitor removes their own krathong (from My Krathong),
-  // reopen the float form: clear the floated-day marker and reset the
-  // floated state, so they can float again the same day (the server
+  // When the visitor removes their own krathong (from the floated state
+  // below), reopen the float form: clear the floated-day marker and reset
+  // the floated state, so they can float again the same day (the server
   // released today's daily slot as part of the delete).
   useEffect(() => {
     const onRemoved = () => {
@@ -156,6 +186,9 @@ export default function Builder({ lang, onFloated }: Props) {
       setBlessing('');
       setCrisis(false);
       setKeepsakeDone(false);
+      // The wish text is cleared so a re-float starts empty (the name
+      // stays pre-filled — it is the visitor's nickname, not the wish).
+      setWish('');
       try {
         localStorage.removeItem(FLOATED_DAY_KEY);
       } catch {
@@ -180,8 +213,86 @@ export default function Builder({ lang, onFloated }: Props) {
     if (next.length === MAX_STAMPS) setCelebrate(true);
   }
 
+  // Copy the recovery ID (the key that proves this device floated the
+  // krathong) — it lives with the floated krathong, not in a panel.
+  async function copyKey() {
+    const identity = getIdentity();
+    if (!identity) return;
+    try {
+      await navigator.clipboard.writeText(identity.id);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard unavailable: the key is still shown in full
+    }
+  }
+
+  // Remove the visitor's own krathong from the river (owner-delete):
+  // the server checks the recovery ID, clears today's daily slot so
+  // they can float again, and the ledger forgets the wish. The
+  // `loy:wish-removed` event reopens the form (see the listener above).
+  async function removeWish(id: string) {
+    const identity = getIdentity();
+    if (!identity) return;
+    if (confirmId !== id) {
+      setConfirmId(id);
+      return;
+    }
+    setConfirmId(null);
+    setRemovingId(id);
+    setRemoveError('');
+    try {
+      const res = await fetch(`/api/wishes?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { 'x-visitor-id': identity.id },
+      });
+      if (!res.ok) throw new Error('delete failed');
+      forgetMyWish(id);
+      setRemovedNote(s.deleteRemoved);
+      window.dispatchEvent(new Event('loy:wish-removed'));
+    } catch {
+      setRemoveError(s.deleteError);
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
+  // The visitor's own row under a floated krathong: the recovery-ID
+  // copy and the owner-delete. `id` is the wish to delete.
+  function ownRow(id: string) {
+    const identity = getIdentity();
+    return (
+      <div className="floated-own">
+        {identity ? (
+          <span>
+            {s.myKeyLabel}: <code>{identity.id}</code>
+          </span>
+        ) : (
+          <span>{s.myKeyLabel}</span>
+        )}
+        <span className="own-actions">
+          {identity && (
+            <button type="button" className="btn small ghost" onClick={() => void copyKey()}>
+              {copied ? s.copiedKey : s.copyKey}
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn small ghost"
+            disabled={removingId === id}
+            onClick={() => void removeWish(id)}
+          >
+            {confirmId === id ? s.deleteConfirm : s.deleteWish}
+          </button>
+        </span>
+      </div>
+    );
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setError('');
     const text = wish.trim();
     if (!text) {
@@ -204,7 +315,7 @@ export default function Builder({ lang, onFloated }: Props) {
           ...(getVisitorId() ? { 'x-visitor-id': getVisitorId() as string } : {}),
         },
         // NOTE: no `worry` field here, ever. It lives only in this browser.
-        body: JSON.stringify({ name: name.trim(), wish: text, flower, boat, flame, lang }),
+        body: JSON.stringify({ name: name.trim(), wish: text, flower, boat, flame, design, lang }),
       });
       const data = (await res.json().catch(() => ({}))) as { wish?: Wish; error?: string };
       if (!res.ok) {
@@ -247,6 +358,7 @@ export default function Builder({ lang, onFloated }: Props) {
       }
       setFloated(data.wish);
       setKeepsakeDone(false);
+      setRemovedNote('');
       // B6 (night-1 special evidence): the float records the
       // once-per-day slot and the float itself (wish id as ref). The
       // server records the same two when the recovery ID was sent; the
@@ -273,6 +385,9 @@ export default function Builder({ lang, onFloated }: Props) {
         flower,
         boat,
         flame,
+        design,
+        name: name.trim(),
+        wish: text,
       });
       setFloatedToday(true);
       awardStamp(today);
@@ -280,6 +395,7 @@ export default function Builder({ lang, onFloated }: Props) {
     } catch {
       setError(s.errorGeneric);
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
@@ -338,7 +454,7 @@ export default function Builder({ lang, onFloated }: Props) {
       <div className="builder" aria-live="polite">
         <h2>{s.floatedTitle}</h2>
         <div className="preview">
-          <KrathongSvg boat={floated.boat} flower={floated.flower} flame={floated.flame} name={floated.name} />
+          <KrathongSvg boat={floated.boat} flower={floated.flower} flame={floated.flame} design={floated.design} name={floated.name} />
           <span className="preview-tag">{floated.name || s.anonymous}</span>
         </div>
         {crisis ? (
@@ -370,11 +486,36 @@ export default function Builder({ lang, onFloated }: Props) {
           {s.keepsake}
         </button>
         {keepsakeDone && <p className="hint" role="status">{s.keepsakeSaved}</p>}
+        {ownRow(floated.id)}
+        {removeError && <p className="err" role="alert">{removeError}</p>}
       </div>
     );
   }
 
   if (floatedToday) {
+    // A return visit after floating: the ledger knows today's krathong,
+    // so it shows here with its Delete, keepsake and Copy — the same
+    // controls as the just-floated state. (Floated from another browser
+    // on the same network, the ledger has no entry and there is nothing
+    // to delete.)
+    const todayEntry = loadMyWishes().find((e) => e.day === bangkokDay());
+    // The keepsake needs a Wish: the ledger carries the krathong and
+    // the wish text (recorded at float time), so a return visit can
+    // still download its card.
+    const todayWish: Wish | null = todayEntry
+      ? {
+          id: todayEntry.id,
+          name: todayEntry.name,
+          wish: todayEntry.wish,
+          flower: todayEntry.flower,
+          boat: todayEntry.boat,
+          flame: todayEntry.flame,
+          design: todayEntry.design,
+          lang,
+          createdAt: todayEntry.at,
+          reactions: { ...EMPTY_REACTIONS },
+        }
+      : null;
     return (
       <div className="builder" aria-live="polite">
         <h2>{s.builderTitle}</h2>
@@ -382,6 +523,36 @@ export default function Builder({ lang, onFloated }: Props) {
           <strong>{s.alreadyFloatedTitle}</strong>
           <p>{s.alreadyFloatedBody}</p>
         </div>
+        {todayEntry && (
+          <div className="preview">
+            <KrathongSvg
+              boat={todayEntry.boat}
+              flower={todayEntry.flower}
+              flame={todayEntry.flame}
+              design={todayEntry.design}
+              name={todayEntry.name}
+            />
+            <span className="preview-tag">{todayEntry.name || s.anonymous}</span>
+          </div>
+        )}
+        {todayWish && (
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => {
+              downloadKeepsake(todayWish, lang);
+              setKeepsakeDone(true);
+              // B4 (night-6 share evidence): saving the keepsake card is
+              // sharing, same as in the just-floated state.
+              recordEvent('share', 0);
+            }}
+          >
+            {s.keepsake}
+          </button>
+        )}
+        {keepsakeDone && <p className="hint" role="status">{s.keepsakeSaved}</p>}
+        {todayEntry && ownRow(todayEntry.id)}
+        {removeError && <p className="err" role="alert">{removeError}</p>}
         {stampStrip}
       </div>
     );
@@ -390,9 +561,10 @@ export default function Builder({ lang, onFloated }: Props) {
   return (
     <form className="builder" onSubmit={submit} noValidate>
       {stampStrip}
+      {removedNote && <p className="hint" role="status">{removedNote}</p>}
 
       <div className="preview" aria-hidden="true">
-        <KrathongSvg boat={boat} flower={flower} flame={flame} name={name} />
+        <KrathongSvg boat={boat} flower={flower} flame={flame} design={design} name={name} />
         <span className="preview-tag">{name.trim() || s.anonymous}</span>
       </div>
 
@@ -500,6 +672,28 @@ export default function Builder({ lang, onFloated }: Props) {
                   className="sw"
                   style={{ background: `linear-gradient(180deg, ${b.colors[0]}, ${b.colors[1]})` }}
                 />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="step">
+        <p className="step-kicker">04 · Design</p>
+        <div>
+          <p className="picker-label" id="design-label">{s.designLabel}</p>
+          <div className="design-tiles" role="group" aria-labelledby="design-label">
+            {DESIGNS.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                className="design-tile"
+                aria-pressed={design === d.id}
+                aria-label={d.label[lang]}
+                onClick={() => setDesign(d.id)}
+              >
+                <KrathongSvg boat={boat} flower={flower} flame={flame} design={d.id} width={110} />
+                <span className="tlabel">{d.label[lang]}</span>
               </button>
             ))}
           </div>
