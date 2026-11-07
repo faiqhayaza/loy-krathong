@@ -831,6 +831,7 @@ export default function Page() {
         <WishWall
           wishes={wishes}
           lang={lang}
+          loading={loading}
           myWishId={myWishId}
           reacted={reacted}
           onReact={toggleReaction}

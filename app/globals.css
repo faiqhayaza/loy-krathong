@@ -278,13 +278,20 @@ button, input, textarea { font: inherit; color: inherit; }
 .pinned .pinned-name { color: var(--muted); font-size: 13.5px; }
 @keyframes rise-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-/* Builder */
+/* Builder — in normal flow, NOT sticky. It used to be
+   `position: sticky; top: 12px` on desktop, but the form is 1212px tall
+   at 1919x998 — taller than the viewport — while the missions panel
+   and milestone card sit below it in the same #float column. Scrolling
+   through the river section stuck the builder at the viewport top
+   while the cards scrolled up underneath it (positioned elements paint
+   above static content), overlapping up to 173,964 px2 and leaving both
+   unreadable in the still state (live defect, 2026-11-07). A sticky
+   element taller than the viewport can never share its column, so the
+   whole column scrolls as one now. */
 .builder {
   border-radius: var(--radius); border: 1px solid var(--line-soft); background: var(--card);
   padding: 18px; display: flex; flex-direction: column; gap: 14px;
-  position: sticky; top: 12px;
 }
-@media (max-width: 959px) { .builder { position: static; } }
 .builder h2 { font-size: 21px; color: var(--cream); }
 .preview { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0 2px; }
 .preview .preview-tag { font-size: 13px; color: var(--gold-soft); font-weight: 600; min-height: 20px; }

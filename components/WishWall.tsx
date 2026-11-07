@@ -37,9 +37,13 @@ interface Props {
   onHide: (wishId: string) => void;
   /** Show a wish hidden on this device again. */
   onUnhide: (wishId: string) => void;
+  /** Wishes still loading from /api/wishes — the wall shows a loading
+      state instead of a zero count until they arrive (live defect,
+      2026-11-07: "0 krathongs floating tonight" flashed on reload). */
+  loading?: boolean;
 }
 
-export default function WishWall({ wishes, lang, myWishId, reacted, onReact, onReacted, onBless, hiddenIds, onHide, onUnhide }: Props) {
+export default function WishWall({ wishes, lang, myWishId, reacted, onReact, onReacted, onBless, hiddenIds, onHide, onUnhide, loading = false }: Props) {
   const s = t(lang);
   const [query, setQuery] = useState('');
   const [showTranslation, setShowTranslation] = useState<Record<string, boolean>>({});
@@ -86,7 +90,7 @@ export default function WishWall({ wishes, lang, myWishId, reacted, onReact, onR
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <span className="pill gold" aria-live="polite">{s.riverCount(wishes.length)}</span>
+        <span className="pill gold" aria-live="polite">{loading ? '…' : s.riverCount(wishes.length)}</span>
       </div>
 
       {hiddenIds.length > 0 && (
@@ -99,7 +103,7 @@ export default function WishWall({ wishes, lang, myWishId, reacted, onReact, onR
       )}
 
       {filtered.length === 0 ? (
-        <p className="hint">{query.trim() ? s.searchEmpty(query.trim()) : s.riverEmpty}</p>
+        <p className="hint">{loading ? '…' : query.trim() ? s.searchEmpty(query.trim()) : s.riverEmpty}</p>
       ) : (
         <div className="wall">
           {filtered.map((w) => {

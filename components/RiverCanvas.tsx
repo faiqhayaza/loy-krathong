@@ -219,7 +219,13 @@ function createWaterRenderer(canvas: HTMLCanvasElement): { render: (o: WaterRend
         float moonX=u_moon+moonBend;
         float moonBand=exp(-pow((flowX-moonX)/(.012+d*.078),2.0));
         float moonBreak=.28+.72*smoothstep(.16,.93,.5+.5*sin(d*21.0+n0*4.0-t*.65));
-        col+=u_cool*moonBand*moonBreak*(.14+.30*d)*(1.0-u_cloud*.003);
+        // Moon band, overcast-robust (fix1 v2): Bangkok is overcast most
+        // evenings and the live state is the veiled one, so the band keeps
+        // most of its strength under cloud — .28+.48*d, was .22+.42*d, and
+        // the cloud factor only trims a tenth, was three. The moon disc in
+        // the sky still veils (dim/halo untouched); only the water path
+        // holds, so the column stays the brightest thing on the water.
+        col+=u_cool*moonBand*moonBreak*(.28+.48*d)*(1.0-u_cloud*.001);
         float glint=pow(max(0.0,sparkleRidge),5.0)*(0.08+.16*d);
         col+=vec3(.15,.20,.19)*glint;
         float rainTexture=(n2-.5)*u_rain*(.025+.075*d);
@@ -691,9 +697,13 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // in the top half were invisible, and a moon with no reflection
       // reads as a mistake. Each has its own phase and a sideways
       // wobble, and the glow under the moon is a real column now, not
-      // a whisper.
+      // a whisper. Live defect 2026-11-07: the path was still fainter
+      // than the temple reflection (moon 70.3 vs temple 78.4), so the
+      // column was strengthened — brighter glow, brighter/longer
+      // dashes, stronger shader band — until the moon path is the
+      // brightest thing on the water.
       shimmers.length = 0;
-      for (let i = 0; i < 26; i++) {
+      for (let i = 0; i < 40; i++) {
         const depth = Math.pow(Math.random(), 0.7);
         shimmers.push({
           x: w * MOON_X + (Math.random() - 0.5) * (30 + depth * 190),
@@ -702,7 +712,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           // the column runs the full depth of the water, which is
           // the bottom third of the panel now
           y: horizon() + 8 + depth * (h - horizon() - 16),
-          w: 14 + Math.random() * 46,
+          w: 18 + Math.random() * 62,
           phase: Math.random() * Math.PI * 2,
           speed: 0.4 + Math.random() * 0.9,
           cool: Math.random() < 0.35,
@@ -1389,29 +1399,32 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // the photograph's own glitter path, which it reinforces: a
       // wide soft glow, then dashes that break and reform down the
       // full depth of the water, each with its own phase and a
-      // sideways wobble. Fainter under a heavy overcast, like the
-      // veiled moon itself.
+      // sideways wobble. Overcast-robust (fix1 v2): the live state in
+      // Bangkok is the veiled one, so the column keeps most of its
+      // strength under cloud (a quarter cut, not half or more) — the
+      // moon disc in the sky still veils, but its path on the water
+      // stays readable, the brightest thing there.
       const moonX = w * MOON_X;
       const glowCol = ctx!.createLinearGradient(moonX - 130, 0, moonX + 130, 0);
       glowCol.addColorStop(0, 'rgba(246, 211, 107, 0)');
-      glowCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.045 * (1 - overcast * 0.6)).toFixed(3)})`);
+      glowCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.12 * (1 - overcast * 0.25)).toFixed(3)})`);
       glowCol.addColorStop(1, 'rgba(246, 211, 107, 0)');
       ctx!.fillStyle = glowCol;
       ctx!.fillRect(moonX - 130, skyH, 260, h - skyH);
       const washCol = ctx!.createLinearGradient(moonX - 240, 0, moonX + 240, 0);
       washCol.addColorStop(0, 'rgba(246, 211, 107, 0)');
-      washCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.012 * (1 - overcast * 0.6)).toFixed(3)})`);
+      washCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.035 * (1 - overcast * 0.25)).toFixed(3)})`);
       washCol.addColorStop(1, 'rgba(246, 211, 107, 0)');
       ctx!.fillStyle = washCol;
       ctx!.fillRect(moonX - 240, skyH, 480, h - skyH);
       for (const sh of shimmers) {
         const tw = 0.35 + 0.65 * Math.abs(Math.sin((t / 1000) * sh.speed + sh.phase));
-        const a = (0.05 + 0.11 * tw) * (1 - overcast * 0.5);
+        const a = (0.12 + 0.18 * tw) * (1 - overcast * 0.2);
         const wx = sh.x + Math.sin((t / 1300) * sh.speed + sh.phase) * 7;
         ctx!.strokeStyle = sh.cool
           ? `rgba(205, 214, 248, ${a.toFixed(3)})`
           : `rgba(246, 211, 107, ${a.toFixed(3)})`;
-        ctx!.lineWidth = 2;
+        ctx!.lineWidth = 2.5;
         ctx!.beginPath();
         ctx!.moveTo(wx - sh.w / 2, sh.y);
         ctx!.lineTo(wx + sh.w / 2, sh.y);
