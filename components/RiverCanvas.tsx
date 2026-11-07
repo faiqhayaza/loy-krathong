@@ -94,6 +94,13 @@ interface Props {
   onSelect: (wish: Wish) => void;
   /** Tonight's destination id — shifts the shader water tint only. */
   destinationId?: string;
+  /**
+   * Chunk A4 (reduced): tonight's milestone stage, 0–4. One scene only —
+   * stage effects hang on it: a gold wash on the water that deepens with
+   * the stage, the temple glowing gold at stage >= 3, fireworks at
+   * stage >= 4. No per-destination scenes (see plan F4b).
+   */
+  milestoneStage?: number;
 }
 
 const ROWS = 4;
@@ -366,7 +373,7 @@ interface WeatherState {
   fogShown: number;
 }
 
-export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSelect, destinationId = 'bangkok' }: Props) {
+export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSelect, destinationId = 'bangkok', milestoneStage = 0 }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   // Second canvas, layered ABOVE the temple SVG overlay: the name
   // tags are drawn here, never on the main canvas. A far-row boat
@@ -393,6 +400,10 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
   langRef.current = lang;
   const highlightRef = useRef<string | null>(highlightId);
   highlightRef.current = highlightId;
+  // Chunk A4: the milestone stage, read through a ref because the scene
+  // effect below runs once — the value stays live as claims land.
+  const stageRef = useRef(0);
+  stageRef.current = Math.max(0, Math.min(4, Math.floor(milestoneStage)));
   const weatherRef = useRef<WeatherState>({
     mode: 'fallback',
     rain: 0, cloud: 15, wind: 0.3, dirX: -0.6, fog: false, storm: false,
@@ -516,6 +527,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     let nextMeteor = 5000;
     let nextFlock = 6000;
     let nextRocket = 2000;
+    let nextStageRocket = 0; // A4: fireworks while the milestone is complete
     let nextShowRocket = 0;
     let nextAmbientRing = 2000;
     let lastNow = 0; // for the wall-clock delta the fireworks timers run on
@@ -1294,6 +1306,18 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       }
       ctx!.globalAlpha = 1;
 
+      // A4 (reduced): at milestone stage >= 3 the temple glows gold — a
+      // warm halo around the spire, painted over the sky before the water.
+      if (stageRef.current >= 3) {
+        const tx = templeX();
+        const ty = h * TEMPLE_TOP_FRAC + 40;
+        const halo = ctx!.createRadialGradient(tx, ty, 10, tx, ty, 190);
+        halo.addColorStop(0, 'rgba(246, 211, 107, 0.20)');
+        halo.addColorStop(1, 'rgba(246, 211, 107, 0)');
+        ctx!.fillStyle = halo;
+        ctx!.fillRect(tx - 190, ty - 190, 380, 380);
+      }
+
       // water — the base is the photograph in the DOM below this canvas
       // (night-graded Chao Phraya water, real ripple texture across the
       // whole surface) with the WebGL shader's moving lanes over it (see
@@ -1310,6 +1334,17 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       ctx!.fillRect(0, skyH, w, waterH);
       if (overcast > 0.01) {
         ctx!.fillStyle = `rgba(24, 30, 62, ${(overcast * 0.22).toFixed(3)})`;
+        ctx!.fillRect(0, skyH, w, waterH);
+      }
+
+      // A4 (reduced): the milestone stage washes the water gold — deeper
+      // with each stage, over the photograph, never instead of it.
+      if (stageRef.current >= 1) {
+        const washA = [0, 0.05, 0.09, 0.14, 0.2][stageRef.current];
+        const gold = ctx!.createLinearGradient(0, skyH, 0, h);
+        gold.addColorStop(0, `rgba(232, 179, 75, ${(washA * 0.6).toFixed(3)})`);
+        gold.addColorStop(1, `rgba(232, 179, 75, ${washA.toFixed(3)})`);
+        ctx!.fillStyle = gold;
         ctx!.fillRect(0, skyH, w, waterH);
       }
 
@@ -1342,9 +1377,10 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // the temple's reflection: a soft glow column under the bank,
       // fading with depth — never hard lines. The photograph's water
       // already carries its own reflections, and drawn fan lines on
-      // top of them read as little gold fans.
+      // top of them read as little gold fans. A4: at stage >= 3 the
+      // column burns brighter with the temple above it.
       const tGlow = ctx!.createLinearGradient(0, skyH, 0, skyH + 110);
-      tGlow.addColorStop(0, 'rgba(246, 211, 107, 0.05)');
+      tGlow.addColorStop(0, stageRef.current >= 3 ? 'rgba(246, 211, 107, 0.22)' : 'rgba(246, 211, 107, 0.05)');
       tGlow.addColorStop(1, 'rgba(246, 211, 107, 0)');
       ctx!.fillStyle = tGlow;
       ctx!.fillRect(templeX() - 70, skyH, 140, 110);
@@ -1672,6 +1708,16 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           launchRocket();
         }
       }
+      // A4 (reduced): a completed milestone (stage 4) celebrates with
+      // fireworks of its own — slower than the festival-night show, so
+      // the sky is festive without being constant.
+      if (stageRef.current >= 4) {
+        nextStageRocket -= dt;
+        if (nextStageRocket <= 0) {
+          nextStageRocket = 2600 + Math.random() * 1600;
+          launchRocket();
+        }
+      }
       // Preview show — measured in animation time, not wall time (see
       // showElapsed): while it runs, each frame adds dt, so a paused or
       // throttled tab stretches the show in wall time instead of cutting
@@ -1799,6 +1845,26 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     // lands on the canvas is never counted twice.
     const onRiverClick = () => noteClick();
     window.addEventListener('loy:river-click', onRiverClick);
+    // Chunk B: the grand finale fires the same 60-second fireworks
+    // show through a dedicated event, so the finale overlay never has
+    // to fake the hidden 5-click trigger above.
+    const onFinaleShow = () => {
+      showElapsed = 0;
+      nextShowRocket = 0;
+      launchRocket(true);
+    };
+    window.addEventListener('loy:finale-show', onFinaleShow);
+    // E4 celebrate: when the organisers trigger a celebration
+    // (config.celebrateUntil), the page dispatches 'loy:celebrate' and
+    // the same 60-second fireworks show starts — identical to the
+    // hidden 5-click preview, just started by the organisers instead.
+    // Dispatching it again while a show runs restarts the 60 s.
+    const onCelebrate = () => {
+      showElapsed = 0;
+      nextShowRocket = 0;
+      launchRocket(true);
+    };
+    window.addEventListener('loy:celebrate', onCelebrate);
     // touch: tap = select. The tap's synthetic click bubbles to the river
     // section and counts toward the hidden show exactly once.
     canvas.addEventListener('touchend', (e: TouchEvent) => {
@@ -1827,6 +1893,8 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       redrawRef.current = null;
       ro.disconnect();
       window.removeEventListener('loy:river-click', onRiverClick);
+      window.removeEventListener('loy:finale-show', onFinaleShow);
+      window.removeEventListener('loy:celebrate', onCelebrate);
       canvas.removeEventListener('mousemove', onMove);
       canvas.removeEventListener('click', onClick);
       canvas.removeEventListener('mouseleave', onLeave);

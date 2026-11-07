@@ -58,7 +58,8 @@ const STRINGS = {
     keyPlaceholder: 'e.g. 4829130756',
     keyError: 'That key does not look right — it must be exactly 10 digits.',
     signinButton: 'Restore my visit',
-    signinNote: 'Your key is stored on this device, so next time you come straight in. Restoring your earlier wishes from another device comes later — for now this keeps your key safe here.',
+    signinNote: 'Your key is stored on this device, so next time you come straight in. Signing in pulls your wishes, stamps and progress back from the river.',
+    signinRateLimited: 'Too many tries. Wait a minute and try again.',
     nicknameFirst: 'Please enter a nickname first.',
   },
   th: {
@@ -84,7 +85,8 @@ const STRINGS = {
     keyPlaceholder: 'เช่น 4829130756',
     keyError: 'กุญแจดูไม่ถูกต้อง — ต้องเป็นตัวเลข 10 หลักพอดี',
     signinButton: 'กลับมาที่เดิมของฉัน',
-    signinNote: 'กุญแจของคุณจะเก็บไว้บนอุปกรณ์นี้ ครั้งหน้าจะเข้าได้เลย ส่วนการดึงคำอธิษฐานเดิมจากอุปกรณ์อื่นจะมาในภายหลัง — ตอนนี้ขอแค่เก็บกุญแจไว้ที่นี่ก่อน',
+    signinNote: 'กุญแจของคุณจะเก็บไว้บนอุปกรณ์นี้ ครั้งหน้าจะเข้าได้เลย การลงชื่อเข้าจะดึงคำอธิษฐาน ตราประทับ และความคืบหน้าของคุณกลับมาจากสายน้ำ',
+    signinRateLimited: 'ลองหลายครั้งเกินไปแล้ว รอสักครู่แล้วลองอีกครั้ง',
     nicknameFirst: 'กรุณาใส่ชื่อเล่นก่อน',
   },
 } as const;
@@ -120,7 +122,13 @@ export default function IdentityDialog({
     setStep('key');
   }
 
-  function handleSignin() {
+  // Sign-in (E1): the key is checked against the server first, so a
+  // visitor's progress comes back with them — and so guessing keys is
+  // rate-limited server-side. When the server cannot be reached the
+  // sign-in still works locally (the key is stored on this device and
+  // the migration runs when the river answers again); the 429 case
+  // blocks, because it means the limit was actually hit.
+  async function handleSignin() {
     setError(null);
     if (!isValidNickname(nickname)) {
       setError(s.nicknameFirst);
@@ -129,6 +137,23 @@ export default function IdentityDialog({
     if (!isValidRecoveryId(keyInput.trim())) {
       setError(s.keyError);
       return;
+    }
+    try {
+      const res = await fetch('/api/identity/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nickname: nickname.trim(), id: keyInput.trim() }),
+      });
+      if (res.status === 429) {
+        setError(s.signinRateLimited);
+        return;
+      }
+      // Any other non-OK (or a missing route) falls through to the
+      // local sign-in below — the server check is a restore, not a
+      // second gate.
+    } catch {
+      // Offline: same fall-through — the key is stored locally and the
+      // state syncs when the river answers again.
     }
     const restored = restoreIdentity(nickname, keyInput.trim());
     if (!restored) {

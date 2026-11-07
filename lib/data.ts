@@ -23,10 +23,28 @@ export interface Wish {
   lang: Lang;
   createdAt: number;
   reactions: ReactionCounts;
+  /** Blessing lanterns sent to this wish (chunk B; merged at read time, like reactions). */
+  blessings?: number;
   /** The other-language text, only on the eight seed wishes. */
   translation?: string;
   /** True for the eight opening wishes that ship with the river. */
   isSeed?: boolean;
+  /**
+   * Moderation status (E5/F2): 'approved' (on the river), 'reported'
+   * (hidden after reports — REPORT_THRESHOLD in lib/store.ts), 'hidden'
+   * (hidden by an organiser). Absent means approved.
+   */
+  status?: 'approved' | 'reported' | 'hidden';
+  /** How many visitors reported this wish (F2). */
+  reports?: number;
+  /**
+   * Server-only: the recovery ID of the visitor who floated it (E1 —
+   * keys My wishes matching and the "people floated" count). It is
+   * stored with the wish but NEVER sent to any client: listWishes and
+   * listStoredWishes strip it, and api/state only uses it to match the
+   * requesting visitor's own wishes.
+   */
+  visitorId?: string;
 }
 
 export const MAX_WISH_CHARS = 280;

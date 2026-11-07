@@ -11,10 +11,10 @@
 
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Lang, ReactionId, Wish } from '@/lib/data';
 import { DESTINATIONS, REACTIONS, STAMP_ICON, flowerGlyph } from '@/lib/data';
-import { calendar, defaultDestination, isOpenDay } from '@/lib/festival';
+import { calendar, calendarFromConfig, defaultDestination, isOpenDay } from '@/lib/festival';
 import { shortDate, t } from '@/lib/i18n';
 import SkyCanvas from '@/components/SkyCanvas';
 import RiverCanvas from '@/components/RiverCanvas';
@@ -24,8 +24,30 @@ import SoundToggle from '@/components/SoundToggle';
 import { audio } from '@/lib/audio';
 import { useReactions } from '@/components/useReactions';
 import IdentityDialog from '@/components/IdentityDialog';
-import { getIdentity } from '@/lib/identity';
+import { collectLocalState, useFestivalState } from '@/components/useFestivalState';
+import SecretDialog from '@/components/SecretDialog';
+import SecretsPanel from '@/components/SecretsPanel';
+import WelcomeDialog from '@/components/WelcomeDialog';
+import JourneyCard from '@/components/JourneyCard';
+import MyKrathong from '@/components/MyKrathong';
+import { MilestoneCard, MissionsAll, MissionsPanel, panelDay, useMissionsVersion } from '@/components/Missions';
+import { loadClaims, milestoneFor } from '@/lib/missions';
+import { getIdentity, getVisitorId } from '@/lib/identity';
 import { recordEvent } from '@/lib/events';
+import { bangkokDay } from '@/lib/bangkok';
+import { loadWelcomeDay } from '@/lib/welcome';
+import { isSecretFound } from '@/lib/secrets';
+import { journeyFor } from '@/lib/journey';
+import { previewNight } from '@/lib/specials';
+import { candleFlameToday } from '@/lib/candle';
+import { hideWish, loadHiddenIds, unhideWish } from '@/lib/report';
+import Specials from '@/components/Specials';
+import QuizDialog from '@/components/QuizDialog';
+import BlessDialog from '@/components/BlessDialog';
+import GratitudeDialog from '@/components/GratitudeDialog';
+import CandleDialog from '@/components/CandleDialog';
+import FinaleOverlay from '@/components/FinaleOverlay';
+import RiverMoments from '@/components/RiverMoments';
 
 const FESTIVAL_AT = Date.UTC(2026, 10, 24, 12, 0, 0); // 19:00 Asia/Bangkok
 
@@ -106,7 +128,14 @@ export default function Page() {
   });
   const s = t(lang);
   const cd = useCountdown();
-  const opening = useOpeningCountdown('2026-11-18');
+  // E1: the festival state (config, me, community) comes from the
+  // server now — the calendar follows the organiser config (startDay,
+  // mode, simDay) instead of the hardcoded defaults, and the passport
+  // (stamps/visits) is dual-written to the server. While the state has
+  // not loaded yet, the local calendar is the fallback.
+  const fest = useFestivalState();
+  const cal = fest.payload ? calendarFromConfig(fest.payload.config) : calendar();
+  const opening = useOpeningCountdown(cal.firstDay);
 
   const [wishes, setWishes] = useState<Wish[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,7 +150,44 @@ export default function Page() {
   const [visits, setVisits] = useState<string[]>(() => [
     ...new Set([...load<string[]>('loy:visits', []), ...loadStamps()]),
   ]);
-  const cal = calendar();
+  // Chunk A: the milestone stage drives the river scene (A4) and the
+  // side panel. useMissionsVersion re-renders this page whenever the
+  // event or claims store changes, so a claim updates the river too.
+  // (`cal` above already follows the server config when it has loaded.)
+  const missionsVersion = useMissionsVersion();
+  void missionsVersion;
+  const milestoneDay = panelDay(cal);
+  const milestone = milestoneFor(milestoneDay, loadClaims());
+  // E1: once the server state is live, adopt its passport — union with
+  // the device-local one, so taps made while offline are kept and
+  // stamps earned on another device arrive here. There is no stamp
+  // removal, so a union can never resurrect anything deleted.
+  const serverMe = fest.payload?.me;
+  useEffect(() => {
+    if (!serverMe) return;
+    setStamps((current) => {
+      const next = [...new Set([...current, ...serverMe.stamps])];
+      if (next.length !== current.length) saveLocal('loy:stamps', next);
+      return next.length === current.length ? current : next;
+    });
+    setVisits((current) => {
+      const next = [...new Set([...current, ...serverMe.visits])];
+      if (next.length !== current.length) saveLocal('loy:visits', next);
+      return next.length === current.length ? current : next;
+    });
+  }, [serverMe]);
+  // E4: when an organiser celebration starts, fire the river's
+  // fireworks show (RiverCanvas listens for 'loy:celebrate'). The ref
+  // remembers the celebration that already fired, so a re-render or a
+  // re-poll does not restart the show.
+  const celebratedUntilRef = useRef<number | null>(null);
+  useEffect(() => {
+    const until = fest.payload?.config.celebrateUntil ?? null;
+    if (until && until > Date.now() && celebratedUntilRef.current !== until) {
+      celebratedUntilRef.current = until;
+      window.dispatchEvent(new Event('loy:celebrate'));
+    }
+  }, [fest.payload?.config.celebrateUntil, fest.celebrating]);
   // Tonight's destination: the river's shader water tint follows it.
   const riverDest = defaultDestination(cal);
   const { reacted, toggleReaction } = useReactions();
@@ -137,10 +203,134 @@ export default function Page() {
   useEffect(() => {
     setShowIdentityGate(!getIdentity());
   }, []);
-  const [myWishId, setMyWishId] = useState<string | null>(() =>
-    typeof window === 'undefined' ? null : load<string | null>('loy:my-wish', null),
-  );
+  // (Chunk B fix — pre-existing: the Builder stores `loy:my-wish` as
+  // a raw id, not JSON, so JSON.parse throws on a bare uuid and this
+  // was always null on a return visit, which hid the "Your krathong"
+  // badge and broke the blessing dialog's own-wish rule. Accept both
+  // shapes; the Builder now writes JSON going forward.)
+  const [myWishId, setMyWishId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('loy:my-wish');
+      if (!raw) return null;
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        return typeof parsed === 'string' ? parsed : null;
+      } catch {
+        return raw;
+      }
+    } catch {
+      return null;
+    }
+  });
+  // Chunk B — the seven specials. `specialDialog` opens one dialog;
+  // the finale is a scene, not a dialog, so it has its own flag.
+  // `eventsTick` re-reads the event store (Specials done states) after
+  // a dialog records an event. `blessTarget` pre-targets the blessing
+  // dialog at one wish (from a wall card button).
+  const [specialDialog, setSpecialDialog] = useState<'quiz' | 'bless' | 'gratitude' | 'candle' | null>(null);
+  const [blessTarget, setBlessTarget] = useState<string | null>(null);
+  const [finaleActive, setFinaleActive] = useState(false);
+  const [finaleFlower, setFinaleFlower] = useState('lotus');
+  const [eventsTick, setEventsTick] = useState(0);
   const riverRef = useRef<HTMLDivElement>(null);
+  // Chunk F2 — wishes hidden on this device only (`loy:hidden`).
+  const [hiddenIds, setHiddenIds] = useState<string[]>(() => loadHiddenIds());
+
+  // Chunk F1 — the river shows today's candle flame on the visitor's
+  // own krathongs. The rebuild tracks one own wish (`loy:my-wish`),
+  // so only that krathong retints; earlier same-day wishes keep the
+  // flame they floated with. Wishes hidden on this device (F2) never
+  // reach the canvas.
+  const flameToday = candleFlameToday();
+  const riverWishes = useMemo(
+    () =>
+      wishes
+        .filter((w) => !hiddenIds.includes(w.id))
+        .map((w) => (w.id === myWishId && flameToday ? { ...w, flame: flameToday } : w)),
+    [wishes, hiddenIds, myWishId, flameToday],
+  );
+  // --- Chunk C state ---
+  // The secret riddle dialog, by destination slug (null = closed).
+  const [secretSlug, setSecretSlug] = useState<string | null>(null);
+  // Bumped after a secret is found so the secrets list, the anchor
+  // and the journey card re-read the stores.
+  const [secretsVersion, setSecretsVersion] = useState(0);
+  // The once-per-day welcome dialog (C3) and the journey card (C2).
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [showJourney, setShowJourney] = useState(false);
+
+  // Welcome dialog (C3): once per Bangkok day, on first visit that
+  // day, after the identity gate has passed. The dialog itself records
+  // the day when it closes.
+  useEffect(() => {
+    if (showIdentityGate !== false) return;
+    if (loadWelcomeDay() !== bangkokDay()) setShowWelcome(true);
+  }, [showIdentityGate]);
+
+  // Tonight's secret: the glimmer anchor over the river shows while a
+  // night is open and that night's secret is still unfound. Before the
+  // festival there is no tonight, so there is no glimmer; in the
+  // archive phase the latest destination's secret glimmers. Found
+  // secrets stay reachable from the secrets list below.
+  const tonightSecretOpen =
+    cal.phase !== 'before' && !isSecretFound(riverDest.id);
+
+  // Join the grand finale (B5): the server confirms night 7 is open,
+  // the `finale` event records, then the 8.5 s scene plays.
+  async function joinFinale() {
+    try {
+      const res = await fetch('/api/finale', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getVisitorId() ? { 'x-visitor-id': getVisitorId() as string } : {}),
+        },
+        body: JSON.stringify({ ...(previewNight() !== null ? { previewNight: previewNight() } : {}) }),
+      });
+      if (!res.ok) return;
+    } catch {
+      return;
+    }
+    recordEvent('finale', 0);
+    setEventsTick((n) => n + 1);
+    try {
+      const saved = JSON.parse(localStorage.getItem('loy:krathong') ?? '{}') as { flower?: string };
+      if (typeof saved.flower === 'string') setFinaleFlower(saved.flower);
+    } catch {
+      // the default lotus stands
+    }
+    setFinaleActive(true);
+  }
+
+  function openSpecial(kind: 'quiz' | 'blessing' | 'gratitude' | 'finale' | 'candle') {
+    if (kind === 'finale') {
+      void joinFinale();
+      return;
+    }
+    setBlessTarget(null);
+    setSpecialDialog(kind === 'blessing' ? 'bless' : kind);
+  }
+
+  // Chunk F2 — hide / unhide a wish on this device only.
+  function hideWishOnDevice(wishId: string) {
+    hideWish(wishId);
+    setHiddenIds(loadHiddenIds());
+  }
+  function unhideWishOnDevice(wishId: string) {
+    unhideWish(wishId);
+    setHiddenIds(loadHiddenIds());
+  }
+
+  function scrollToFloat() {
+    document.getElementById('float')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function refreshWishesAfterBlessing() {
+    const list = await fetchWishes();
+    if (list) setWishes(list);
+    setEventsTick((n) => n + 1);
+  }
 
   const fetchWishes = useCallback(async () => {
     try {
@@ -185,12 +375,10 @@ export default function Page() {
     return () => clearInterval(id);
   }, [fetchWishes]);
 
-  // Reveal on scroll. The effect must also re-run when the identity
-  // gate closes: for a first-time visitor the page (and its .reveal
-  // sections) only renders after sign-in, long after `loading` flipped
-  // — with [loading] alone the observer was never attached and every
-  // section stayed at opacity 0. (Found while verifying Chunk C; the
-  // delivered tree has the same bug.)
+  // Reveal on scroll — re-runs after the identity gate passes, or a
+  // first-time visitor would never see the .reveal sections (they are
+  // not rendered until the gate passes, so the first observer run finds
+  // nothing to observe).
   useEffect(() => {
     const els = document.querySelectorAll('.reveal');
     const io = new IntersectionObserver(
@@ -246,6 +434,9 @@ export default function Page() {
     const next = [...visits, id];
     setVisits(next);
     saveLocal('loy:visits', next);
+    // E1: dual-write — the server copy is what follows the visitor to
+    // another device; the local copy is the offline fallback.
+    void fest.saveMe({ visits: next });
   }
 
   function collectStamp(id: string) {
@@ -253,6 +444,7 @@ export default function Page() {
     const next = [...stamps, id];
     setStamps(next);
     saveLocal('loy:stamps', next);
+    void fest.saveMe({ stamps: next });
   }
 
   function onDestination(d: (typeof DESTINATIONS)[number]) {
@@ -275,6 +467,11 @@ export default function Page() {
     setMyWishId(wish.id);
     setHighlightId(wish.id);
     setPinned(wish);
+    // E1: the krathong that just floated is the visitor's saved one —
+    // push it to the server with the float (C4 adds an explicit save
+    // button later; until then the float is the save point).
+    const local = collectLocalState();
+    if (local.krathong) void fest.saveMe({ krathong: local.krathong });
     riverRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     window.setTimeout(() => setHighlightId(null), 5000);
   }
@@ -292,8 +489,20 @@ export default function Page() {
   // The gate is the whole first page: while it is up (or undecided),
   // the site is not rendered at all — no hero, no passport, no river,
   // no wall — and there is no way past it except signing up or signing in.
+  // E1: once the visitor passes the gate, refresh the festival state
+  // at once — the hook's 30 s poll would otherwise take up to 30 s to
+  // learn the visitor's ID, and the one-time migration (which runs off
+  // the first live state) would wait with it.
   if (showIdentityGate !== false) {
-    return <IdentityDialog lang={lang} onDone={() => setShowIdentityGate(false)} />;
+    return (
+      <IdentityDialog
+        lang={lang}
+        onDone={() => {
+          setShowIdentityGate(false);
+          void fest.refresh();
+        }}
+      />
+    );
   }
 
   return (
@@ -353,6 +562,33 @@ export default function Page() {
         </div>
       )}
 
+      {/* E1: the river could not be reached — keep showing the last
+          update; the state hook retries on its own. */}
+      {fest.status === 'down' && (
+        <div className="phase-banner" role="status">
+          <strong>⚠️ {s.serverDown}</strong>
+          <span>{s.serverDownBody}</span>
+        </div>
+      )}
+      {/* E3: the organisers set a pretend date for everyone. */}
+      {fest.payload?.config.simDay && (
+        <div className="phase-banner" role="status">
+          <strong>🔍 Preview</strong>
+          <span>{s.previewingAll(shortDate(fest.payload.config.simDay, lang))}</span>
+        </div>
+      )}
+      {/* E4: rewards paused / celebration running, set by the organisers. */}
+      {fest.payload?.config.paused && (
+        <div className="phase-banner" role="status">
+          <strong>⏸️ {s.pausedNote}</strong>
+        </div>
+      )}
+      {fest.celebrating && (
+        <div className="phase-banner" role="status">
+          <strong>🎆 {s.celebration}</strong>
+        </div>
+      )}
+
       {/* Hero */}
       <section className="hero" id="top">
         <SkyCanvas />
@@ -384,7 +620,7 @@ export default function Page() {
       </section>
 
       {/* Seven destinations */}
-      <section className="section reveal" aria-labelledby="dest-title">
+      <section className="section reveal" id="destinations" aria-labelledby="dest-title">
         <div className="section-head">
           <h2 id="dest-title">{s.destinationsTitle}</h2>
           <span className="hint">
@@ -428,6 +664,26 @@ export default function Page() {
         {stamps.length === 7 && <p className="hint" role="status">{s.passportComplete}</p>}
       </section>
 
+      {/* Hidden secrets (Chunk C1): all seven, with found state. */}
+      <section className="section reveal" aria-labelledby="secrets-title">
+        <div className="section-head">
+          <h2 id="secrets-title">{s.secretsTitle}</h2>
+        </div>
+        <p className="section-intro">{s.secretsIntro}</p>
+        <SecretsPanel
+          key={secretsVersion}
+          lang={lang}
+          cal={cal}
+          onOpen={(slug) => {
+            setSecretSlug(slug);
+            riverRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }}
+        />
+      </section>
+
+      {/* Chunk B — the seven specials, one per night. */}
+      <Specials lang={lang} tick={eventsTick} onOpenDialog={openSpecial} onFloatScroll={scrollToFloat} />
+
       {/* River + builder */}
       <section
         className="section reveal"
@@ -455,13 +711,37 @@ export default function Page() {
           <div>
             <div className="river-wrap" ref={riverRef}>
               <RiverCanvas
-                wishes={wishes}
+                wishes={riverWishes}
                 lang={lang}
                 highlightId={highlightId}
                 onHover={(wish, x, y) => setHover(wish ? { wish, x, y } : null)}
                 onSelect={(wish) => setPinned(wish)}
                 destinationId={riverDest.id}
+                milestoneStage={milestone.stage}
               />
+              {/* Tonight's secret (C1): one object glimmers slightly
+                  brighter than its surroundings — a hidden anchor over
+                  the water, where the temple's reflection meets the
+                  moon's path. Tapping it opens tonight's riddle. The
+                  click must not also set off the fireworks easter egg
+                  (the section counts river clicks), so it stops
+                  propagation. */}
+              {tonightSecretOpen && (
+                <button
+                  type="button"
+                  className="secret-anchor"
+                  aria-label={s.secretGlimmer}
+                  title={s.secretGlimmer}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSecretSlug(riverDest.id);
+                  }}
+                >
+                  <span aria-hidden="true">✦</span>
+                </button>
+              )}
+              {/* Chunk B — blessing lanterns rising, thanks lanterns drifting. */}
+              <RiverMoments lang={lang} />
               <div className="river-bar">
                 {pending.length > 0 && (
                   <span className="pill gold" role="status">
@@ -528,8 +808,19 @@ export default function Page() {
 
           <div id="float">
             <Builder lang={lang} onFloated={handleFloated} />
+            {/* Chunk A side panel: tonight's missions + the milestone card. */}
+            <MissionsPanel lang={lang} cal={cal} />
+            <MilestoneCard lang={lang} cal={cal} day={milestoneDay} />
           </div>
         </div>
+      </section>
+
+      {/* Missions — all seven nights (chunk A; the Me tab lists these once C4 lands it there). */}
+      <section className="section reveal" id="missions" aria-labelledby="missions-all-title">
+        <div className="section-head">
+          <h2 id="missions-all-title">{s.missionsAllTitle}</h2>
+        </div>
+        <MissionsAll lang={lang} cal={cal} />
       </section>
 
       {/* Wish wall */}
@@ -537,8 +828,58 @@ export default function Page() {
         <div className="section-head">
           <h2 id="wall-title">{s.wallTitle}</h2>
         </div>
-        <WishWall wishes={wishes} lang={lang} myWishId={myWishId} reacted={reacted} onReact={toggleReaction} onReacted={updateWishReactions} />
+        <WishWall
+          wishes={wishes}
+          lang={lang}
+          myWishId={myWishId}
+          reacted={reacted}
+          onReact={toggleReaction}
+          onReacted={updateWishReactions}
+          hiddenIds={hiddenIds}
+          onHide={hideWishOnDevice}
+          onUnhide={unhideWishOnDevice}
+          onBless={(wishId) => {
+            setBlessTarget(wishId);
+            setSpecialDialog('bless');
+          }}
+        />
       </section>
+
+      {/* My Krathong (Chunk C4) + journey card (C2). */}
+      <section className="section reveal" id="my-krathong" aria-labelledby="my-krathong-title">
+        <div className="section-head">
+          <h2 id="my-krathong-title">{s.myKrathongTitle}</h2>
+          <button type="button" className="btn ghost" onClick={() => setShowJourney(true)}>
+            {s.journeyOpen}
+          </button>
+        </div>
+        <p className="section-intro">{s.myKrathongIntro}</p>
+        <MyKrathong lang={lang} wishes={wishes} />
+      </section>
+
+      {/* Chunk B — the special dialogs and the finale scene. */}
+      {specialDialog === 'quiz' && (
+        <QuizDialog lang={lang} onClose={() => { setSpecialDialog(null); setEventsTick((n) => n + 1); }} />
+      )}
+      {specialDialog === 'bless' && (
+        <BlessDialog
+          lang={lang}
+          wishes={wishes}
+          myWishId={myWishId}
+          targetId={blessTarget}
+          onClose={() => { setSpecialDialog(null); setBlessTarget(null); setEventsTick((n) => n + 1); }}
+          onSent={() => void refreshWishesAfterBlessing()}
+        />
+      )}
+      {specialDialog === 'gratitude' && (
+        <GratitudeDialog lang={lang} onClose={() => { setSpecialDialog(null); setEventsTick((n) => n + 1); }} />
+      )}
+      {specialDialog === 'candle' && (
+        <CandleDialog lang={lang} onClose={() => { setSpecialDialog(null); setEventsTick((n) => n + 1); }} />
+      )}
+      {finaleActive && (
+        <FinaleOverlay lang={lang} flower={finaleFlower} onClose={() => setFinaleActive(false)} />
+      )}
 
       {/* Closing footer — the page used to end abruptly after the wish
           wall. No privacy text here (that block stays removed); just a
@@ -550,6 +891,31 @@ export default function Page() {
         </span>
         <span>{s.festivalDate}</span>
       </footer>
+
+      {/* Chunk C dialogs */}
+      {secretSlug &&
+        (() => {
+          const dest = DESTINATIONS.find((d) => d.id === secretSlug);
+          return dest ? (
+            <SecretDialog
+              lang={lang}
+              destination={dest}
+              onClose={() => setSecretSlug(null)}
+              onFound={() => setSecretsVersion((v) => v + 1)}
+            />
+          ) : null;
+        })()}
+      {showWelcome && (
+        <WelcomeDialog
+          lang={lang}
+          destination={riverDest}
+          onLangChange={switchLang}
+          onClose={() => setShowWelcome(false)}
+        />
+      )}
+      {showJourney && (
+        <JourneyCard lang={lang} cal={cal} journey={journeyFor(cal)} onClose={() => setShowJourney(false)} />
+      )}
     </div>
   );
 }

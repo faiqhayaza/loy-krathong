@@ -14,8 +14,9 @@ import {
   type Lang,
   type Wish,
 } from '@/lib/data';
-import { addWish, checkDailyLimit, checkRateLimit, listWishes, usingRedis } from '@/lib/store';
+import { addFloater, addWish, checkDailyLimit, checkRateLimit, invalidateWishesCache, listWishesCached, recordServerEvent } from '@/lib/store';
 import { bangkokDay } from '@/lib/bangkok';
+import { isValidRecoveryId } from '@/lib/identity';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,21 +25,13 @@ export const runtime = 'nodejs';
 // budget, and every visitor polls this endpoint. A short server-side
 // cache (one Redis read per 30s per instance, at most) keeps a busy
 // festival night from exhausting it. Writes clear the cache, so a new
-// wish still shows up immediately.
-const CACHE_TTL_MS = 30_000;
-let cached: { at: number; payload: { wishes: Wish[]; count: number; totalReactions: number; storage: string } } | null = null;
+// wish still shows up immediately. The cache itself lives in
+// lib/store.ts (listWishesCached) because a route file may not export
+// anything but route handlers — the bless route invalidates it the
+// same way after hanging a lantern.
 
 export async function GET() {
-  const now = Date.now();
-  if (cached && now - cached.at < CACHE_TTL_MS) {
-    return NextResponse.json(cached.payload);
-  }
-  const { wishes, totalReactions } = await listWishes();
-  // `storage` is a first-hand health signal: "redis" proves wishes are
-  // shared through Upstash; "memory" means the env vars are missing and
-  // each server instance only remembers its own wishes.
-  const payload = { wishes, count: wishes.length, totalReactions, storage: usingRedis() ? 'redis' : 'memory' };
-  cached = { at: now, payload };
+  const payload = await listWishesCached();
   return NextResponse.json(payload);
 }
 
@@ -122,7 +115,34 @@ export async function POST(req: NextRequest) {
     reactions: { ...EMPTY_REACTIONS },
   };
 
+  // E1: when the floater is signed in (the gate guarantees an identity
+  // in normal use), link the wish to their recovery ID — server-side
+  // only, never sent to any client (listWishes strips it). It keys My
+  // wishes matching (C4), the "people floated" count (E5) and the
+  // owner's own view in api/state. The header is optional: a float
+  // without one still works, it just has no owner.
+  const visitorId = req.headers.get('x-visitor-id');
+  if (visitorId && isValidRecoveryId(visitorId)) {
+    wish.visitorId = visitorId;
+  }
+
   await addWish(wish);
-  cached = null; // A fresh wish must be visible on the next read.
-  return NextResponse.json({ wish }, { status: 201 });
+  invalidateWishesCache(); // A fresh wish must be visible on the next read.
+  // B6 (night-1 special evidence): floating records two events — the
+  // once-per-day slot and the float itself with the wish id as ref.
+  // The client records the same two on the device (lib/events.ts) and
+  // mirrors them here; the server log dedupes by day+kind+ref, so the
+  // two paths never double-count. Only when the visitor's recovery ID
+  // arrives (header `x-visitor-id`) can the server attribute them.
+  if (wish.visitorId) {
+    const day = bangkokDay();
+    await recordServerEvent(wish.visitorId, { day, kind: 'float_slot', ref: 0 });
+    await recordServerEvent(wish.visitorId, { day, kind: 'float', ref: wish.id });
+    await addFloater(wish.visitorId);
+  }
+  // The response carries the public wish only — the internal visitorId
+  // never leaves the server, not even back to its owner.
+  const { visitorId: _v, ...publicWish } = wish;
+  void _v;
+  return NextResponse.json({ wish: publicWish }, { status: 201 });
 }

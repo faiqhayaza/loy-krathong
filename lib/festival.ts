@@ -68,6 +68,20 @@ export function calendar(): FestivalCalendar {
   return festivalCalendar(FESTIVAL_START_DAY, 'none', bangkokDay());
 }
 
+/**
+ * Today's calendar from the organiser config (E2/E3): startDay + mode
+ * from the config, and `today` is the config's simDay when one is set
+ * (server-wide preview — everyone sees the pretend date). Falls back to
+ * the real Bangkok day when no simDay is set.
+ */
+export function calendarFromConfig(
+  config: { startDay: string; mode: 'none' | 'opening_night' | 'finale_night'; simDay: string | null },
+  today?: string,
+): FestivalCalendar {
+  const day = config.simDay ?? today ?? bangkokDay();
+  return festivalCalendar(config.startDay, config.mode, day);
+}
+
 /** A night's missions can be earned only while that night is live. */
 export function canEarn(cal: FestivalCalendar, day: number): boolean {
   return cal.phase === 'live' && cal.liveDay === day;

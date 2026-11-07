@@ -11,16 +11,32 @@
 // budget. The device-local store remains the source of truth; this log
 // is the forward-compatible record E1 will later read as `me.events`.
 //
+// E1: the recorded event also feeds the community aggregates
+// (noteCommunityEvent in lib/store.ts — candles, blessings, gratitude
+// counts). E4: when rewards are paused (`config.paused`), reward-bearing
+// kinds (quiz, blessing, candle, gratitude, share, finale) are rejected
+// with 409 `paused` — pausing stops rewards, not participation
+// (visit_place, react, float, float_slot keep working).
+//
 // A worry is never part of an event and is never read here.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { EVENT_KINDS, isEventKind, type EventKind } from '@/lib/events';
 import { isValidRecoveryId } from '@/lib/identity';
 import { bangkokDay } from '@/lib/bangkok';
-import { checkRateLimit, recordServerEvent, removeServerEvent } from '@/lib/store';
+import {
+  checkRateLimit,
+  getConfig,
+  noteCommunityEvent,
+  recordServerEvent,
+  removeServerEvent,
+} from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+/** Event kinds that earn rewards — blocked while rewards are paused (E4). */
+const REWARD_KINDS: EventKind[] = ['quiz', 'blessing', 'candle', 'gratitude', 'share', 'finale'];
 
 function clientIp(req: NextRequest): string {
   const forwarded = req.headers.get('x-forwarded-for');
@@ -75,6 +91,18 @@ export async function POST(req: NextRequest) {
     const removed = await removeServerEvent(visitorId, day, kind as EventKind, ref);
     return NextResponse.json({ ok: true, removed });
   }
+  // E4: rewards paused — reward-bearing kinds are refused, participation
+  // kinds (visit_place, react, float, float_slot) still record.
+  if ((REWARD_KINDS as string[]).includes(kind as string)) {
+    const config = await getConfig();
+    if (config.paused) {
+      return NextResponse.json(
+        { error: 'paused', message: 'Rewards are paused by the organisers right now.' },
+        { status: 409 },
+      );
+    }
+  }
   const recorded = await recordServerEvent(visitorId, { day, kind: kind as EventKind, ref });
+  if (recorded) await noteCommunityEvent(kind as EventKind, ref, day);
   return NextResponse.json({ ok: true, recorded, day });
 }

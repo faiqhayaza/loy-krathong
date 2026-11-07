@@ -1,7 +1,13 @@
 // "Float my krathong": the builder panel. Live SVG preview, nickname, wish,
-// a worry that never leaves the device, and flower / boat / flame pickers.
+// a worry that never leaves the device, and flower / boat pickers.
 // The POST body contains name, wish, flower, boat, flame and lang only —
 // the worry is deliberately never included.
+//
+// The flame is NOT picked here: the HTML float form has no flame picker
+// — the flame comes from the daily candle (chunk F1). A krathong floats
+// with today's candle flame when one is lit, else the default gold.
+// (Plan F1(d) decision, recorded in VERIFICATION.md.)
+//
 //
 // One float per day: the server enforces one float per Bangkok day per IP
 // (429 daily_limit), and this panel remembers the day you floated in
@@ -16,10 +22,8 @@ import { useEffect, useState } from 'react';
 import type { Lang, Wish } from '@/lib/data';
 import {
   BOATS,
-  DEFAULT_BOAT,
   DEFAULT_FLAME,
   DEFAULT_FLOWER,
-  FLAMES,
   FLOWERS,
   MAX_NAME_CHARS,
   MAX_WISH_CHARS,
@@ -29,9 +33,14 @@ import {
   isKnownFlower,
 } from '@/lib/data';
 import { bangkokDay } from '@/lib/bangkok';
+import { candleFlameToday } from '@/lib/candle';
 import { replyLanguage, templateBlessing } from '@/lib/blessing';
 import { CRISIS_MESSAGE, isCrisis } from '@/lib/crisis';
+import { getVisitorId } from '@/lib/identity';
+import { recordEvent } from '@/lib/events';
 import { t } from '@/lib/i18n';
+import { loadKrathongChoice, saveKrathongChoice } from '@/lib/krathong';
+import { destinationForNewWish, recordMyWish } from '@/lib/myWishes';
 import KrathongSvg from './KrathongSvg';
 import Confetti from './Confetti';
 import { downloadKeepsake } from './Keepsake';
@@ -44,38 +53,6 @@ interface Props {
 const MAX_STAMPS = 10;
 const FLOATED_DAY_KEY = 'loy:floated-day';
 const DAILY_STAMPS_KEY = 'loy:daily-stamps';
-const KRATHONG_KEY = 'loy:krathong';
-
-/**
- * The visitor's krathong choices, kept on this device like the original
- * site keeps them (its whole state, S.krathong included, is saved to
- * localStorage): flower, boat and flame are restored on load instead of
- * resetting to the defaults every visit.
- */
-function loadKrathongChoice(): { flower: string; boat: string; flame: string } {
-  const fallback = { flower: DEFAULT_FLOWER, boat: DEFAULT_BOAT, flame: DEFAULT_FLAME };
-  try {
-    const raw = localStorage.getItem(KRATHONG_KEY);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as { flower?: unknown; boat?: unknown; flame?: unknown };
-    const flower =
-      typeof parsed.flower === 'string' &&
-      (isKnownFlower(parsed.flower) || isAllowedCustomEmoji(parsed.flower))
-        ? parsed.flower
-        : DEFAULT_FLOWER;
-    const boat =
-      typeof parsed.boat === 'string' && BOATS.some((b) => b.id === parsed.boat)
-        ? parsed.boat
-        : DEFAULT_BOAT;
-    const flame =
-      typeof parsed.flame === 'string' && FLAMES.some((f) => f.id === parsed.flame)
-        ? parsed.flame
-        : DEFAULT_FLAME;
-    return { flower, boat, flame };
-  } catch {
-    return fallback;
-  }
-}
 
 function loadDailyStamps(): string[] {
   try {
@@ -111,7 +88,9 @@ export default function Builder({ lang, onFloated }: Props) {
   const [worry, setWorry] = useState('');
   const [flower, setFlower] = useState(() => loadKrathongChoice().flower);
   const [boat, setBoat] = useState(() => loadKrathongChoice().boat);
-  const [flame, setFlame] = useState(() => loadKrathongChoice().flame);
+  // The flame comes from the daily candle (chunk F1), not a picker:
+  // today's candle flame when one is lit, else the default gold.
+  const flame = candleFlameToday() ?? DEFAULT_FLAME;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [floated, setFloated] = useState<Wish | null>(null);
@@ -135,14 +114,24 @@ export default function Builder({ lang, onFloated }: Props) {
   const [celebrate, setCelebrate] = useState(false);
 
   // Keep the krathong choices on this device, so a return visit finds
-  // the same flower, boat and flame picked.
+  // the same flower and boat picked. The flame saved here is today's
+  // candle flame (or the default gold) — the builder never picks one.
+  // The My Krathong panel (Chunk C4) writes the same key with an
+  // explicit Save; when it does, this listener picks the saved choice
+  // up so the two editors never show different colours.
   useEffect(() => {
-    try {
-      localStorage.setItem(KRATHONG_KEY, JSON.stringify({ flower, boat, flame }));
-    } catch {
-      // private mode: the builder still works without it
-    }
+    saveKrathongChoice({ flower, boat, flame });
   }, [flower, boat, flame]);
+
+  useEffect(() => {
+    const reload = () => {
+      const saved = loadKrathongChoice();
+      setFlower((f) => (f === saved.flower ? f : saved.flower));
+      setBoat((b) => (b === saved.boat ? b : saved.boat));
+    };
+    window.addEventListener('loy:krathong-changed', reload);
+    return () => window.removeEventListener('loy:krathong-changed', reload);
+  }, []);
 
   const blocked = containsBlocked(wish) || containsBlocked(name);
 
@@ -174,7 +163,13 @@ export default function Builder({ lang, onFloated }: Props) {
     try {
       const res = await fetch('/api/wishes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          // The recovery ID lets the server record the float events
+          // (B6) against this visitor; without it the device-local
+          // record below is the only evidence. Never a name or a worry.
+          ...(getVisitorId() ? { 'x-visitor-id': getVisitorId() as string } : {}),
+        },
         // NOTE: no `worry` field here, ever. It lives only in this browser.
         body: JSON.stringify({ name: name.trim(), wish: text, flower, boat, flame, lang }),
       });
@@ -219,14 +214,33 @@ export default function Builder({ lang, onFloated }: Props) {
       }
       setFloated(data.wish);
       setKeepsakeDone(false);
+      // B6 (night-1 special evidence): the float records the
+      // once-per-day slot and the float itself (wish id as ref). The
+      // server records the same two when the recovery ID was sent; the
+      // server log dedupes, so nothing double-counts.
+      recordEvent('float_slot', 0);
+      recordEvent('float', data.wish.id);
       // The worry is discarded the moment the krathong floats.
       setWorry('');
       try {
         localStorage.setItem(FLOATED_DAY_KEY, today);
-        localStorage.setItem('loy:my-wish', data.wish.id);
+        // JSON, like every other `loy:*` key the page reads back with
+        // JSON.parse (a raw id broke the read — see page.tsx).
+        localStorage.setItem('loy:my-wish', JSON.stringify(data.wish.id));
       } catch {
         // private mode: the river still works without it
       }
+      // Chunk C4: this device's ledger of the visitor's own wishes —
+      // the My wishes list and the journey card's `floated` map read
+      // it. The destination tag follows the D3 rule (tonight's
+      // destination if there is a live night, else null).
+      recordMyWish({
+        id: data.wish.id,
+        destination: destinationForNewWish(),
+        flower,
+        boat,
+        flame,
+      });
       setFloatedToday(true);
       awardStamp(today);
       onFloated(data.wish);
@@ -314,6 +328,10 @@ export default function Builder({ lang, onFloated }: Props) {
           onClick={() => {
             downloadKeepsake(floated, lang);
             setKeepsakeDone(true);
+            // B4 (night-6 share evidence): saving the keepsake card is
+            // sharing — it records a `share` event. A blessing lantern
+            // counts the same way (its event kind is `blessing`).
+            recordEvent('share', 0);
           }}
         >
           {s.keepsake}
@@ -446,26 +464,6 @@ export default function Builder({ lang, onFloated }: Props) {
                 className="sw"
                 style={{ background: `linear-gradient(180deg, ${b.colors[0]}, ${b.colors[1]})` }}
               />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <p className="picker-label" id="flame-label">{s.flameLabel}</p>
-        <div className="swatches" role="group" aria-labelledby="flame-label">
-          {FLAMES.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              className="flame-btn"
-              aria-pressed={flame === f.id}
-              aria-label={f.label[lang]}
-              title={f.label[lang]}
-              style={{ background: f.color }}
-              onClick={() => setFlame(f.id)}
-            >
-              <span aria-hidden="true">🕯️</span>
             </button>
           ))}
         </div>

@@ -459,3 +459,349 @@ button, input, textarea { font: inherit; color: inherit; }
   text-decoration: underline; text-underline-offset: 3px;
 }
 @media (max-width: 480px) { .id-key { font-size: 28px; letter-spacing: 0.1em; } }
+
+/* --- Chunk B: the seven specials ---------------------------------------- */
+
+/* Modal shell shared by the quiz / blessing / gratitude dialogs. */
+.dlg-backdrop {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(4, 6, 20, 0.72);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 48px 16px 16px; overflow-y: auto;
+}
+.dlg-card {
+  width: min(560px, 100%);
+  background: var(--card-solid);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+.dlg-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.dlg-head h2 { font-size: 21px; color: var(--cream); }
+.dlg-sub { color: var(--muted); font-size: 14px; margin: 6px 0 12px; }
+.dlg-story { color: var(--ink); margin-bottom: 12px; }
+.dlg-question { font-weight: 600; color: var(--cream); margin-bottom: 10px; }
+.dlg-quote { color: var(--gold-soft); font-style: italic; margin: 10px 0; }
+.dlg-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.dlg-card .btn.primary { width: 100%; justify-content: center; margin-top: 14px; }
+.dlg-card .dlg-actions .btn.primary { width: auto; margin-top: 0; }
+.dlg-card .field textarea { min-height: 64px; resize: vertical; }
+
+/* Choice grids (quiz options, blessings, gratitude cards). */
+.choice-grid { display: grid; gap: 8px; margin-bottom: 12px; }
+@media (min-width: 560px) { .choice-grid { grid-template-columns: 1fr 1fr; } }
+.choice-btn { justify-content: flex-start; text-align: left; min-height: 44px; }
+.choice-btn.primary { justify-content: flex-start; }
+
+/* Banners inside dialogs (success / warning / error / info). */
+.banner { border-radius: 12px; padding: 10px 12px; margin: 12px 0; font-size: 14.5px; }
+.banner.success { background: rgba(94, 224, 160, 0.14); border: 1px solid rgba(94, 224, 160, 0.4); color: #c9f5dd; }
+.banner.warning { background: rgba(246, 211, 107, 0.12); border: 1px solid rgba(246, 211, 107, 0.45); color: #fbe9b0; }
+.banner.error { background: rgba(255, 90, 74, 0.12); border: 1px solid rgba(255, 90, 74, 0.45); color: #ffc4bd; }
+.banner.info { background: rgba(94, 200, 255, 0.12); border: 1px solid rgba(94, 200, 255, 0.4); color: #cdeeff; }
+
+/* Blessing pick list. */
+.pick-list { display: grid; gap: 8px; max-height: 320px; overflow-y: auto; margin-top: 10px; }
+.pick-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--card); border: 1px solid var(--line-soft);
+  border-radius: 12px; padding: 10px 12px;
+}
+.pick-glyph { font-size: 26px; line-height: 1; flex: none; }
+.pick-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.pick-text strong { color: var(--cream); font-size: 14.5px; }
+.pick-sub {
+  color: var(--muted); font-size: 13px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.pick-target {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px; margin-bottom: 12px;
+}
+
+/* The seven specials section. */
+.specials-grid { display: grid; gap: 12px; }
+@media (min-width: 640px) { .specials-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 960px) { .specials-grid { grid-template-columns: repeat(3, 1fr); } }
+.special-card {
+  position: relative; display: flex; flex-direction: column; gap: 6px;
+  background: var(--card); border: 1px solid var(--line-soft);
+  border-radius: 16px; padding: 16px;
+}
+.special-card.done { border-color: var(--gold); background: linear-gradient(180deg, rgba(232, 179, 75, 0.14), rgba(232, 179, 75, 0.04)); }
+.special-card.locked { opacity: 0.6; }
+.special-icon { font-size: 26px; line-height: 1; }
+.special-night { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.special-card h3 { font-size: 17px; color: var(--cream); }
+.special-card h3 .th { display: block; font-weight: 400; font-size: 13px; color: var(--pink); }
+.special-card p { font-size: 14px; color: #cfc8e8; flex: 1; }
+.special-card .btn { margin-top: 6px; justify-content: center; }
+.special-state { font-size: 13px; font-weight: 600; color: var(--gold-soft); margin-top: 6px; }
+.special-hint { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+/* Blessing lanterns on wall cards. */
+.wc-bless { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.wc-lanterns { font-size: 13.5px; color: var(--gold-soft); font-weight: 600; }
+
+/* River moments: rising blessing lantern + drifting thanks lanterns. */
+.river-moments { position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
+.rising-lantern {
+  position: absolute; left: 62%; top: 82%; font-size: 34px; line-height: 1;
+  filter: drop-shadow(0 0 10px rgba(255, 159, 67, 0.9));
+  animation: lantern-rise 11s linear forwards;
+}
+@keyframes lantern-rise {
+  0% { transform: translateY(0) scale(1.4); opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateY(-320px) translateX(14px) scale(0.7); opacity: 0; }
+}
+.thanks-lantern {
+  position: absolute; width: 16px; height: 22px; border-radius: 3px 3px 5px 5px;
+  border-top: 2px solid rgba(46, 31, 20, 0.85);
+  animation: thanks-drift 48s ease-in-out infinite alternate;
+}
+@keyframes thanks-drift {
+  from { transform: translateX(-14px); }
+  to { transform: translateX(26px); }
+}
+.thanks-lantern.releasing { animation: thanks-release 16s ease-out forwards; }
+@keyframes thanks-release {
+  0% { transform: translate(0, -46px) scale(1.25); }
+  100% { transform: translate(-60px, 0) scale(1); }
+}
+/* Chunk F1: the daily candle's visual moment — a candle glow that
+   rises from the water for 8 s after lighting. The colour comes from
+   the flame just chosen (inline drop-shadow). */
+.candle-glow {
+  position: absolute; left: 44%; top: 78%; font-size: 30px; line-height: 1;
+  animation: candle-rise 8s ease-out forwards;
+}
+@keyframes candle-rise {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(-260px) translateX(-10px) scale(0.8); opacity: 0; }
+}
+/* Chunk F2: the report / hide row on a wall card, and a wish hidden
+   on this device (shown greyed when the visitor asks to see it). */
+.wc-report { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.wish-card.hidden-here { opacity: 0.55; }
+
+/* The grand finale overlay. */
+.finale-overlay {
+  position: fixed; inset: 0; z-index: 80;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.finale-scene {
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(7, 10, 31, 0.18), rgba(7, 10, 31, 0.5));
+}
+.finale-overlay:not(.finale-scene) { background: rgba(4, 6, 20, 0.72); }
+.finale-caption {
+  position: absolute; top: 12%; left: 0; right: 0; text-align: center;
+  color: var(--gold-soft); font-family: var(--display); font-size: clamp(16px, 3vw, 24px);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.8);
+  animation: finale-fade 2s ease-in 1.5s both;
+}
+@keyframes finale-fade { from { opacity: 0; } to { opacity: 1; } }
+.finale-crowd { position: absolute; inset: 0; overflow: hidden; }
+.finale-krathong {
+  position: absolute; line-height: 1;
+  filter: drop-shadow(0 0 6px rgba(255, 211, 122, 0.55));
+  animation: finale-appear 0.8s ease-out both, finale-bob 3.2s ease-in-out infinite alternate;
+}
+@keyframes finale-appear { from { opacity: 0; transform: translateY(10px) scale(0.6); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes finale-bob { from { margin-top: 0; } to { margin-top: -5px; } }
+.finale-mine {
+  position: absolute; left: 50%; top: 78%; font-size: 64px; line-height: 1;
+  filter: drop-shadow(0 0 18px rgba(255, 211, 122, 0.9));
+  animation: finale-drift 5s ease-in-out 0.4s forwards;
+}
+@keyframes finale-drift {
+  0% { transform: translate(-50%, 0) scale(1); }
+  100% { transform: translate(-50%, -170px) scale(1.15); }
+}
+.finale-lotus {
+  position: absolute; top: 60%; left: -12%; font-size: 72px; line-height: 1;
+  filter: drop-shadow(0 0 22px rgba(255, 211, 122, 0.95));
+  animation: golden-lotus 8.5s linear forwards;
+}
+@keyframes golden-lotus {
+  from { left: -12%; }
+  to { left: 105%; }
+}
+.finale-msg { text-align: center; }
+.finale-msg h2 { font-size: 20px; line-height: 1.5; margin-bottom: 12px; }
+.finale-msg p { margin-bottom: 12px; }
+.finale-msg .hint { margin: 4px 0 12px; }
+.finale-msg .btn { width: 100%; justify-content: center; }
+.finale-msg .btn.ghost { margin-top: 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rising-lantern, .thanks-lantern, .candle-glow, .finale-krathong, .finale-mine, .finale-lotus { animation: none; }
+  .finale-mine { top: 46%; }
+}
+/* Chunk A — Missions + milestone card. Same night palette as the rest of
+   the page: translucent cards, gold accents, compact rows. */
+.missions-panel, .milestone-card {
+  margin-top: 20px; padding: 16px; border-radius: var(--radius);
+  border: 1px solid var(--line-soft); background: var(--card);
+}
+.missions-panel h3, .milestone-card h3 { font-size: 17px; color: var(--cream); }
+.missions-panel .section-head, .milestone-card .section-head { margin-bottom: 2px; }
+.mission-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+.mission {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px; border-radius: 12px;
+  border: 1px solid var(--line-soft); background: rgba(7, 10, 31, 0.35);
+}
+.mission.claimed { border-color: var(--line); }
+.mission.locked, .mission.missed { opacity: 0.62; }
+.mission-icon { font-size: 20px; line-height: 1.2; flex: none; }
+.mission-body { display: grid; gap: 1px; min-width: 0; flex: 1; }
+.mission-title { font-weight: 700; color: var(--cream); font-size: 14.5px; }
+.mission-detail { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.mission-meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; margin-top: 3px; font-size: 12.5px; }
+.mission-progress { font-weight: 700; color: var(--ink); }
+.mission-reward { color: var(--gold-soft); font-weight: 600; }
+.mission-state { color: var(--muted); }
+.mission.missed .mission-state { color: #f2a18e; }
+.mission.claimed .mission-state { color: var(--gold-soft); font-weight: 700; }
+.mission-actions { flex: none; display: flex; gap: 8px; }
+.mission-actions .btn { text-decoration: none; }
+.milestone-name { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+.milestone-bar {
+  position: relative; height: 12px; border-radius: 999px; margin-top: 12px;
+  background: rgba(7, 10, 31, 0.6); border: 1px solid var(--line-soft); overflow: hidden;
+}
+.milestone-fill {
+  display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--gold-deep), var(--gold), var(--gold-soft));
+  transition: width 0.6s ease;
+}
+.milestone-mark { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(247, 241, 227, 0.35); }
+.milestone-count { margin-top: 8px; font-weight: 700; color: var(--cream); font-size: 14px; }
+.milestone-next { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+.milestone-done { color: var(--gold-soft); font-weight: 700; font-size: 14px; margin-top: 4px; }
+.milestone-local { color: var(--muted); font-size: 12.5px; margin-top: 8px; font-style: italic; }
+.milestone-total { color: var(--ink); font-size: 13px; margin-top: 2px; }
+.missions-all { display: grid; gap: 10px; }
+.missions-all details.night {
+  border: 1px solid var(--line-soft); border-radius: 14px;
+  background: var(--card); padding: 4px 14px 12px;
+}
+.missions-all details.night summary {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  cursor: pointer; padding: 10px 0 4px; font-weight: 700; color: var(--cream); font-size: 15.5px;
+  list-style: none;
+}
+.missions-all details.night summary::-webkit-details-marker { display: none; }
+/* --- Chunk C: secrets, journey, welcome, My Krathong --- */
+
+/* Dialogs (secret riddle, welcome, journey card): a centred card over
+   a dimmed page, in the night palette. */
+.dlg-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(4, 6, 18, 0.72);
+  backdrop-filter: blur(3px);
+}
+.dlg {
+  width: min(560px, 100%); max-height: min(88vh, 760px); overflow: auto;
+  background: var(--card-solid); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 22px 22px 26px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+.dlg-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.dlg-head h3 { font-size: 21px; color: var(--cream); }
+.dlg-head .lang-toggle { flex: none; }
+.dlg-sub { color: var(--muted); font-size: 13.5px; margin-top: 4px; }
+.dlg-label { font-weight: 700; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gold-soft); margin: 18px 0 6px; }
+.dlg-body { color: var(--ink); font-size: 16px; line-height: 1.6; }
+.dlg-gentle {
+  margin: 18px 0; padding: 14px 16px; border-radius: 12px;
+  background: rgba(242, 160, 192, 0.09); border: 1px solid rgba(242, 160, 192, 0.28);
+  color: var(--cream); font-size: 15px; line-height: 1.6;
+}
+.dlg-note { color: var(--muted); font-size: 14px; margin-top: 12px; }
+.dlg-good { color: var(--gold-soft); font-weight: 700; font-size: 18px; margin-top: 14px; }
+.dlg-tagline { color: var(--muted); font-size: 14px; margin: 14px 0; }
+.dlg .btn.primary { margin-top: 16px; }
+.dlg-options { display: grid; gap: 8px; margin-top: 12px; }
+.dlg-option { justify-content: flex-start; text-align: left; }
+
+/* Tonight's secret: a 76×76 px anchor over the water, glimmering
+   slightly brighter than its surroundings (the plan's `secret-anchor`
+   + `secretGlimmer`). Placed where the temple's reflection meets the
+   moon's path — right of centre, low over the water. */
+.secret-anchor {
+  position: absolute; right: 16%; bottom: 12%;
+  width: 76px; height: 76px; border-radius: 50%;
+  border: 1px solid rgba(246, 211, 107, 0.55);
+  background: radial-gradient(circle, rgba(246, 211, 107, 0.34), rgba(246, 211, 107, 0.06) 70%);
+  color: var(--gold-soft); font-size: 26px; cursor: pointer;
+  animation: secret-glimmer 2.6s ease-in-out infinite;
+}
+.secret-anchor:hover { background: radial-gradient(circle, rgba(246, 211, 107, 0.5), rgba(246, 211, 107, 0.12) 70%); }
+@keyframes secret-glimmer {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(246, 211, 107, 0.28); transform: scale(1); }
+  50% { box-shadow: 0 0 26px 6px rgba(246, 211, 107, 0.34); transform: scale(1.05); }
+}
+
+/* Secrets list: one row per destination. */
+.secrets-list { display: grid; gap: 8px; }
+.secret-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 14px; border: 1px solid var(--line-soft);
+  border-radius: 14px; background: var(--card);
+}
+.secret-row.found { border-color: var(--line); background: rgba(232, 179, 75, 0.08); }
+.secret-symbol { font-size: 26px; line-height: 1; }
+.secret-info { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.secret-info strong { color: var(--cream); font-size: 15.5px; }
+.secret-dest { color: var(--muted); font-size: 13px; }
+.secret-state { color: var(--gold-soft); font-size: 13px; font-weight: 600; }
+
+/* Journey card dialog. */
+.journey-dlg { width: min(620px, 100%); }
+.journey-krathong { display: flex; justify-content: center; margin: 8px 0 4px; }
+.journey-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin: 14px 0; }
+.journey-cell {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 10px 2px 8px; border-radius: 12px; font-size: 22px;
+  border: 1px solid var(--line-soft); background: rgba(239, 232, 216, 0.04); color: var(--muted);
+}
+.journey-cell.visited { background: rgba(239, 232, 216, 0.1); color: #cfc8e8; }
+.journey-cell.stamped { border-color: var(--gold); background: rgba(232, 179, 75, 0.16); color: var(--gold-soft); }
+.journey-night { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; }
+.journey-stamp { position: absolute; top: 2px; right: 6px; font-size: 13px; color: var(--gold-soft); }
+.journey-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; color: var(--ink); font-size: 15.5px; }
+.journey-lines .journey-notyet { color: var(--muted); font-size: 13.5px; }
+
+/* My Krathong panel. */
+.my-krathong h3 { font-size: 18px; color: var(--cream); margin: 22px 0 10px; }
+.mk-identity {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 10px 14px; border: 1px solid var(--line-soft); border-radius: 12px;
+  background: var(--card); color: var(--ink); font-size: 14.5px; margin-bottom: 16px;
+}
+.mk-identity code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--gold-soft); letter-spacing: 0.08em; }
+.mk-editor { display: grid; gap: 20px; }
+@media (min-width: 760px) { .mk-editor { grid-template-columns: 240px 1fr; } }
+.mk-pickers .btn.primary { margin-top: 14px; }
+.my-wishes { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.my-wish {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 12px 14px; border: 1px solid var(--line-soft);
+  border-radius: 14px; background: var(--card);
+}
+.my-wish-krathong {
+  flex: none; width: 52px; height: 52px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 26px;
+}
+.my-wish-info { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.my-wish-text { color: var(--cream); font-size: 15px; line-height: 1.5; }
+.my-wish-meta { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.my-wish-chip { color: var(--ink); background: rgba(239, 232, 216, 0.08); border-radius: 999px; padding: 1px 8px; font-size: 12.5px; }

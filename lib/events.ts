@@ -19,6 +19,8 @@
 //   float (ref = wish id), float_slot (ref 0), quiz (0),
 //   blessing (ref = wish id), candle (ref = flame id),
 //   gratitude (ref = card id), share (0), finale (0),
+//   secret (ref = destination slug — chunk F: the claim route verifies
+//   a `secret-<slug>` claim against this event, or `me.secrets`),
 //   flight_done (0), flight_skip (0).
 // Only visit_place and react are wired in D1; the rest are recorded by
 // their own chunks (B/F) when they land.
@@ -37,6 +39,7 @@ export const EVENT_KINDS = [
   'gratitude',
   'share',
   'finale',
+  'secret',
   'flight_done',
   'flight_skip',
 ] as const;
@@ -122,6 +125,9 @@ export function recordEvent(kind: EventKind, ref: string | number = 0): boolean 
   if (hasEvent(day, kind, ref)) return false;
   saveEvents([...loadEvents(), { day, kind, ref }]);
   syncToServer(kind, ref, false);
+  // Chunk A: the missions UI re-reads the store on this event, so a
+  // visit / reaction / float updates the missions without a reload.
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('loy:events-changed'));
   return true;
 }
 
@@ -137,5 +143,7 @@ export function removeEvent(kind: EventKind, ref: string | number = 0): boolean 
   if (kept.length === events.length) return false;
   saveEvents(kept);
   syncToServer(kind, ref, true);
+  // Chunk A: see recordEvent — the missions UI re-reads on this event.
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('loy:events-changed'));
   return true;
 }
