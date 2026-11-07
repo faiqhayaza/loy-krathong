@@ -61,12 +61,12 @@ function stateLabel(s: Strings, state: Mission['state']): string {
   return '';
 }
 
-function MissionRow({ lang, mission, cal }: { lang: Lang; mission: Mission; cal: FestivalCalendar }) {
+function MissionRow({ lang, mission, cal, index }: { lang: Lang; mission: Mission; cal: FestivalCalendar; index: number }) {
   const s = t(lang);
   const target = goTarget(mission);
   const label = stateLabel(s, mission.state);
   return (
-    <li className={`mission ${mission.state}`} data-day={mission.day} data-slot={mission.slot}>
+    <li className={`mission ${mission.state}`} data-day={mission.day} data-slot={mission.slot} style={{ '--i': index } as React.CSSProperties}>
       <span className="mission-icon" aria-hidden="true">{mission.icon}</span>
       <span className="mission-body">
         <span className="mission-title">{mission.title[lang]}</span>
@@ -125,8 +125,8 @@ export function MissionsPanel({ lang, cal }: { lang: Lang; cal: FestivalCalendar
       {dest && <p className="section-intro">{s.missionsNight(day, dest.name[lang])}</p>}
       {cal.phase === 'before' && <p className="hint">{s.missionsLockedNote}</p>}
       <ul className="mission-list">
-        {missions.map((m) => (
-          <MissionRow key={m.slot} lang={lang} mission={m} cal={cal} />
+        {missions.map((m, i) => (
+          <MissionRow key={m.slot} lang={lang} mission={m} cal={cal} index={i} />
         ))}
       </ul>
     </section>
@@ -190,18 +190,18 @@ export function MissionsAll({ lang, cal }: { lang: Lang; cal: FestivalCalendar }
   const all = missionsFor(cal, loadEvents(), loadClaims());
   return (
     <div className="missions-all">
-      {DESTINATIONS.map((dest) => {
+      {DESTINATIONS.map((dest, di) => {
         const night = all.filter((m) => m.day === dest.day);
         const done = night.filter((m) => m.state === 'completed' || m.state === 'claimed').length;
         return (
-          <details key={dest.id} className="night" open={cal.liveDay === dest.day}>
+          <details key={dest.id} className="night" open={cal.liveDay === dest.day} style={{ '--i': di } as React.CSSProperties}>
             <summary>
               <span>{s.missionsNight(dest.day, dest.name[lang])}</span>
               <span className="pill">{s.missionsDone(done, 3)}</span>
             </summary>
             <ul className="mission-list">
-              {night.map((m) => (
-                <MissionRow key={m.slot} lang={lang} mission={m} cal={cal} />
+              {night.map((m, i) => (
+                <MissionRow key={m.slot} lang={lang} mission={m} cal={cal} index={i} />
               ))}
             </ul>
           </details>

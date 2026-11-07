@@ -28,11 +28,11 @@ export default function SecretsPanel({ lang, cal, onOpen }: Props) {
       <p className="hint" role="status">
         {s.secretsFoundCount(found.length)}
       </p>
-      {DESTINATIONS.map((d) => {
+      {DESTINATIONS.map((d, i) => {
         const isFound = found.includes(d.id);
         const open = isOpenDay(cal, d.day);
         return (
-          <div key={d.id} className={`secret-row${isFound ? ' found' : ''}`}>
+          <div key={d.id} className={`secret-row${isFound ? ' found' : ''}`} style={{ '--i': i } as React.CSSProperties}>
             <span className="secret-symbol" aria-hidden="true">
               {d.secret.symbol}
             </span>

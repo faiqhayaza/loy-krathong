@@ -356,11 +356,6 @@ export default function Builder({ lang, onFloated }: Props) {
 
   return (
     <form className="builder" onSubmit={submit} noValidate>
-      <div>
-        <h2>{s.builderTitle}</h2>
-        <p className="hint">{s.builderIntro}</p>
-      </div>
-
       {stampStrip}
 
       <div className="preview" aria-hidden="true">
@@ -368,104 +363,113 @@ export default function Builder({ lang, onFloated }: Props) {
         <span className="preview-tag">{name.trim() || s.anonymous}</span>
       </div>
 
-      <div className="field">
-        <label htmlFor="bk-name">{s.nameLabel}</label>
-        <input
-          id="bk-name"
-          type="text"
-          value={name}
-          maxLength={MAX_NAME_CHARS}
-          placeholder={s.namePlaceholder}
-          onChange={(e) => setName(e.target.value)}
-          autoComplete="off"
-        />
-      </div>
-
-      <div className="field">
-        <label htmlFor="bk-wish">{s.wishLabel}</label>
-        <textarea
-          id="bk-wish"
-          value={wish}
-          maxLength={MAX_WISH_CHARS}
-          placeholder={s.wishPlaceholder}
-          onChange={(e) => setWish(e.target.value)}
-          aria-invalid={wish.trim().length === 0 && error === s.errorNeedWish}
-          aria-describedby="bk-wish-hint bk-wish-count"
-        />
-        <span className="hint" id="bk-wish-hint">{s.wishHint}</span>
-        <span className="count" id="bk-wish-count">
-          {wish.length}/{MAX_WISH_CHARS}
-        </span>
-      </div>
-
-      <div className="field">
-        <label htmlFor="bk-worry">{s.worryLabel}</label>
-        <textarea
-          id="bk-worry"
-          value={worry}
-          maxLength={MAX_WORRY_CHARS}
-          placeholder={s.worryPlaceholder}
-          onChange={(e) => setWorry(e.target.value)}
-          aria-describedby="bk-worry-hint"
-        />
-        <span className="hint" id="bk-worry-hint">{s.worryHint}</span>
-      </div>
-
-      <div>
-        <p className="picker-label" id="flower-label">{s.flowerLabel}</p>
-        <div className="tiles" role="group" aria-labelledby="flower-label">
-          {FLOWERS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              className="tile"
-              aria-pressed={flower === f.id}
-              aria-label={f.label[lang]}
-              onClick={() => setFlower(f.id)}
-            >
-              <span className="glyph" aria-hidden="true">{f.glyph}</span>
-              <span className="tlabel">{f.label[lang]}</span>
-            </button>
-          ))}
-        </div>
-        {/* One emoji of your own (Rules: isAllowedCustomEmoji) — it becomes
-            the krathong flower. Anything that is not one allowed emoji is
-            never stored: the preview and the server both fall back to lotus. */}
-        <div className="custom-flower">
-          <label htmlFor="bk-flower-custom">{s.flowerCustomLabel}</label>
+      <div className="step">
+        <p className="step-kicker">01 · Your wish</p>
+        <div className="field">
+          <label htmlFor="bk-name">{s.nameLabel}</label>
           <input
-            id="bk-flower-custom"
+            id="bk-name"
             type="text"
-            value={isKnownFlower(flower) ? '' : flower}
-            maxLength={16}
-            placeholder={s.flowerCustomPlaceholder}
-            onChange={(e) => setFlower(e.target.value.trim() === '' ? DEFAULT_FLOWER : e.target.value)}
+            value={name}
+            maxLength={MAX_NAME_CHARS}
+            placeholder={s.namePlaceholder}
+            onChange={(e) => setName(e.target.value)}
             autoComplete="off"
-            className={!isKnownFlower(flower) && isAllowedCustomEmoji(flower) ? 'active' : ''}
           />
-          <span className="hint">{s.flowerCustomHint}</span>
+        </div>
+
+        <div className="field">
+          <label htmlFor="bk-wish">{s.wishLabel}</label>
+          <textarea
+            id="bk-wish"
+            value={wish}
+            maxLength={MAX_WISH_CHARS}
+            placeholder={s.wishPlaceholder}
+            onChange={(e) => setWish(e.target.value)}
+            aria-invalid={wish.trim().length === 0 && error === s.errorNeedWish}
+            aria-describedby="bk-wish-hint bk-wish-count"
+          />
+          <span className="hint" id="bk-wish-hint">{s.wishHint}</span>
+          <span className="count" id="bk-wish-count">
+            {wish.length}/{MAX_WISH_CHARS}
+          </span>
+        </div>
+
+        <div className="field">
+          <label htmlFor="bk-worry">{s.worryLabel}</label>
+          <textarea
+            id="bk-worry"
+            value={worry}
+            maxLength={MAX_WORRY_CHARS}
+            placeholder={s.worryPlaceholder}
+            onChange={(e) => setWorry(e.target.value)}
+            aria-describedby="bk-worry-hint"
+          />
+          <span className="hint" id="bk-worry-hint">{s.worryHint}</span>
         </div>
       </div>
 
-      <div>
-        <p className="picker-label" id="boat-label">{s.boatLabel}</p>
-        <div className="swatches" role="group" aria-labelledby="boat-label">
-          {BOATS.map((b) => (
-            <button
-              key={b.id}
-              type="button"
-              className="swatch-btn"
-              aria-pressed={boat === b.id}
-              aria-label={b.label[lang]}
-              title={b.label[lang]}
-              onClick={() => setBoat(b.id)}
-            >
-              <span
-                className="sw"
-                style={{ background: `linear-gradient(180deg, ${b.colors[0]}, ${b.colors[1]})` }}
-              />
-            </button>
-          ))}
+      <div className="step">
+        <p className="step-kicker">02 · Flower</p>
+        <div>
+          <p className="picker-label" id="flower-label">{s.flowerLabel}</p>
+          <div className="tiles" role="group" aria-labelledby="flower-label">
+            {FLOWERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className="tile"
+                aria-pressed={flower === f.id}
+                aria-label={f.label[lang]}
+                onClick={() => setFlower(f.id)}
+              >
+                <span className="glyph" aria-hidden="true">{f.glyph}</span>
+                <span className="tlabel">{f.label[lang]}</span>
+              </button>
+            ))}
+          </div>
+          {/* One emoji of your own (Rules: isAllowedCustomEmoji) — it becomes
+              the krathong flower. Anything that is not one allowed emoji is
+              never stored: the preview and the server both fall back to lotus. */}
+          <div className="custom-flower">
+            <label htmlFor="bk-flower-custom">{s.flowerCustomLabel}</label>
+            <input
+              id="bk-flower-custom"
+              type="text"
+              value={isKnownFlower(flower) ? '' : flower}
+              maxLength={16}
+              placeholder={s.flowerCustomPlaceholder}
+              onChange={(e) => setFlower(e.target.value.trim() === '' ? DEFAULT_FLOWER : e.target.value)}
+              autoComplete="off"
+              className={!isKnownFlower(flower) && isAllowedCustomEmoji(flower) ? 'active' : ''}
+            />
+            <span className="hint">{s.flowerCustomHint}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="step">
+        <p className="step-kicker">03 · Boat</p>
+        <div>
+          <p className="picker-label" id="boat-label">{s.boatLabel}</p>
+          <div className="swatches" role="group" aria-labelledby="boat-label">
+            {BOATS.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                className="swatch-btn"
+                aria-pressed={boat === b.id}
+                aria-label={b.label[lang]}
+                title={b.label[lang]}
+                onClick={() => setBoat(b.id)}
+              >
+                <span
+                  className="sw"
+                  style={{ background: `linear-gradient(180deg, ${b.colors[0]}, ${b.colors[1]})` }}
+                />
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

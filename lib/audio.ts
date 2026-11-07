@@ -61,6 +61,11 @@ class AudioManager {
     }
   }
 
+  isEffectivelyOn(): boolean {
+    if (!this.started || !this.music) return false;
+    return this.isEnabled() && !this.music.paused;
+  }
+
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
     return () => {
@@ -69,7 +74,7 @@ class AudioManager {
   }
 
   private emit() {
-    const on = this.isEnabled();
+    const on = this.isEffectivelyOn();
     for (const fn of this.listeners) fn(on);
   }
 
@@ -84,6 +89,8 @@ class AudioManager {
       a.style.display = 'none';
       document.body.appendChild(a);
       this.music = a;
+      a.addEventListener('playing', () => this.emit());
+      a.addEventListener('pause', () => this.emit());
     }
     return this.music;
   }

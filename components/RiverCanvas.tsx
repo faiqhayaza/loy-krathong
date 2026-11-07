@@ -694,7 +694,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       tufts.length = 0;
       let clusters = 0;
       let guard = 0;
-      while (clusters < 6 && guard < 40) {
+      while (clusters < 4 && guard < 40) {
         guard += 1;
         const cx = Math.random() * w;
         if (cx > w * 0.45 && cx < w * 0.8) continue;
@@ -705,9 +705,9 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           const n = 3 + Math.floor(Math.random() * 4);
           for (let b = 0; b < n; b++) {
             blades.push({
-              h: 9 + Math.random() * 15,
-              lean: (Math.random() - 0.5) * 16,
-              w: 1.4 + Math.random() * 1.2,
+              h: 6 + Math.random() * 8,
+              lean: (Math.random() - 0.5) * 12,
+              w: 1.0 + Math.random() * 0.8,
               head: Math.random() < 0.35,
             });
           }
@@ -731,16 +731,16 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // dashes, stronger shader band — until the moon path is the
       // brightest thing on the water.
       shimmers.length = 0;
-      for (let i = 0; i < 40; i++) {
+      for (let i = 0; i < 10; i++) {
         const depth = Math.pow(Math.random(), 0.7);
         shimmers.push({
-          x: w * MOON_X + (Math.random() - 0.5) * (30 + depth * 190),
+          x: w * MOON_X + (Math.random() - 0.5) * (30 + depth * 140),
           // brightest near the far bank, breaking up toward the
           // viewer — never a ladder of bars, never only at the top;
           // the column runs the full depth of the water, which is
           // the bottom third of the panel now
           y: horizon() + 8 + depth * (h - horizon() - 16),
-          w: 18 + Math.random() * 62,
+          w: 90 + Math.random() * 90,
           phase: Math.random() * Math.PI * 2,
           speed: 0.4 + Math.random() * 0.9,
           cool: Math.random() < 0.35,
@@ -1302,7 +1302,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           const bx = tf.x + (b - (tf.blades.length - 1) / 2) * 3;
           const tipX = bx + bl.lean + (b - (tf.blades.length - 1) / 2) * 2.4;
           const tipY = tf.y - bl.h;
-          ctx!.strokeStyle = 'rgba(14, 28, 24, 0.8)';
+          ctx!.strokeStyle = 'rgba(18, 34, 40, 0.55)';
           ctx!.lineWidth = bl.w;
           ctx!.beginPath();
           ctx!.moveTo(bx, tf.y + 2);
@@ -1310,7 +1310,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           ctx!.stroke();
           if (bl.head) {
             // a cattail seed head on the tip
-            ctx!.fillStyle = 'rgba(14, 26, 20, 0.8)';
+            ctx!.fillStyle = 'rgba(18, 34, 40, 0.55)';
             ctx!.beginPath();
             ctx!.ellipse(tipX, tipY - 2, 1.8, 4.5, bl.lean * 0.03, 0, Math.PI * 2);
             ctx!.fill();
@@ -1339,31 +1339,39 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // moon disc in the sky still veils, but its path on the water
       // stays readable, the brightest thing there.
       const moonX = w * MOON_X;
+      const coreBand = ctx!.createLinearGradient(moonX - 45, 0, moonX + 45, 0);
+      coreBand.addColorStop(0, 'rgba(246, 211, 107, 0)');
+      coreBand.addColorStop(0.5, `rgba(246, 211, 107, ${(0.16 * dim).toFixed(3)})`);
+      coreBand.addColorStop(1, 'rgba(246, 211, 107, 0)');
+      ctx!.fillStyle = coreBand;
+      ctx!.fillRect(moonX - 45, skyH, 90, h - skyH);
       const glowCol = ctx!.createLinearGradient(moonX - 130, 0, moonX + 130, 0);
       glowCol.addColorStop(0, 'rgba(246, 211, 107, 0)');
-      glowCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.12 * (1 - overcast * 0.25)).toFixed(3)})`);
+      glowCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.1 * dim).toFixed(3)})`);
       glowCol.addColorStop(1, 'rgba(246, 211, 107, 0)');
       ctx!.fillStyle = glowCol;
       ctx!.fillRect(moonX - 130, skyH, 260, h - skyH);
       const washCol = ctx!.createLinearGradient(moonX - 240, 0, moonX + 240, 0);
       washCol.addColorStop(0, 'rgba(246, 211, 107, 0)');
-      washCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.035 * (1 - overcast * 0.25)).toFixed(3)})`);
+      washCol.addColorStop(0.5, `rgba(246, 211, 107, ${(0.03 * dim).toFixed(3)})`);
       washCol.addColorStop(1, 'rgba(246, 211, 107, 0)');
       ctx!.fillStyle = washCol;
       ctx!.fillRect(moonX - 240, skyH, 480, h - skyH);
       for (const sh of shimmers) {
         const tw = 0.35 + 0.65 * Math.abs(Math.sin((t / 1000) * sh.speed + sh.phase));
-        const a = (0.12 + 0.18 * tw) * (1 - overcast * 0.2);
+        const a = (0.05 + 0.09 * tw) * dim;
         const wx = sh.x + Math.sin((t / 1300) * sh.speed + sh.phase) * 7;
         ctx!.strokeStyle = sh.cool
           ? `rgba(205, 214, 248, ${a.toFixed(3)})`
           : `rgba(246, 211, 107, ${a.toFixed(3)})`;
-        ctx!.lineWidth = 2.5;
+        ctx!.lineWidth = 3;
+        ctx!.lineCap = 'round';
         ctx!.beginPath();
         ctx!.moveTo(wx - sh.w / 2, sh.y);
         ctx!.lineTo(wx + sh.w / 2, sh.y);
         ctx!.stroke();
       }
+      ctx!.lineCap = 'butt';
 
       // ripple arcs over the photograph — the lower water's texture
       // (see the seed comment). They never fade below 60% of base

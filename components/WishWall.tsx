@@ -106,13 +106,13 @@ export default function WishWall({ wishes, lang, myWishId, reacted, onReact, onR
         <p className="hint">{loading ? '…' : query.trim() ? s.searchEmpty(query.trim()) : s.riverEmpty}</p>
       ) : (
         <div className="wall">
-          {filtered.map((w) => {
+          {filtered.map((w, i) => {
             const showingTranslation = !!showTranslation[w.id] && !!w.translation;
             const mine = reacted[w.id] ?? null;
             const hiddenHere = hiddenIds.includes(w.id);
             const reported = reportedIds.has(w.id);
             return (
-              <article className={`wish-card ${hiddenHere ? 'hidden-here' : ''}`} key={w.id}>
+              <article className={`wish-card${hiddenHere ? ' hidden-here' : ''}${w.id === myWishId ? ' mine' : ''}`} key={w.id} style={{ '--i': i } as React.CSSProperties}>
                 <div className="wc-top">
                   <span className="wc-glyph" aria-hidden="true">{flowerGlyph(w.flower)}</span>
                   <span className="wc-name">{w.name.trim() || s.anonymous}</span>

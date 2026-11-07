@@ -624,7 +624,7 @@ export default function Page() {
           Krathong follows the form, so the flow reads: see the river,
           float your krathong, find it on the river and in your panel. */}
       <section
-        className="section reveal"
+        className="river-section reveal"
         id="river"
         aria-labelledby="river-title"
         onClick={(e) => {
@@ -639,13 +639,16 @@ export default function Page() {
           window.dispatchEvent(new Event('loy:river-click'));
         }}
       >
-        <div className="section-head">
-          <h2 id="river-title">{s.riverTitle}</h2>
-          <span className="pill" aria-live="polite">
-            {loading ? '…' : s.riverCount(wishes.length)}
-          </span>
+        <div className="river-head">
+          <p className="kicker">The river · Chao Phraya</p>
+          <div className="section-head">
+            <h2 id="river-title">{s.riverTitle}</h2>
+            <span className="pill" aria-live="polite">
+              {loading ? '…' : s.riverCount(wishes.length)}
+            </span>
+          </div>
+          <p className="section-intro">{s.riverHint}</p>
         </div>
-        <p className="section-intro">{s.riverHint}</p>
         <div className="river-wrap" ref={riverRef}>
           <RiverCanvas
             wishes={riverWishes}
@@ -732,11 +735,19 @@ export default function Page() {
         )}
       </section>
 
-      {/* Float my krathong — below the river it floats into. */}
-      <section className="section reveal" id="float">
-        <div className="layout">
+      {/* Float — below the river (Designer C): the builder on the left,
+          tonight's missions and the milestone card in a rail on the
+          right. The section owns the title and intro; the form itself
+          starts with the stamps and the preview. */}
+      <section className="float-section reveal" id="float" aria-labelledby="float-title">
+        <p className="kicker">Float a krathong</p>
+        <div className="section-head">
+          <h2 id="float-title">{s.builderTitle}</h2>
+        </div>
+        <p className="section-intro">{s.builderIntro}</p>
+        <div className="float-grid">
           <Builder lang={lang} onFloated={handleFloated} />
-          <div>
+          <div className="float-rail">
             {/* Chunk A side panel: tonight's missions + the milestone card. */}
             <MissionsPanel lang={lang} cal={cal} />
             <MilestoneCard lang={lang} cal={cal} day={milestoneDay} />
@@ -746,6 +757,7 @@ export default function Page() {
 
       {/* My Krathong (Chunk C4) + journey card (C2). */}
       <section className="section reveal" id="my-krathong" aria-labelledby="my-krathong-title">
+        <p className="kicker">My krathong</p>
         <div className="section-head">
           <h2 id="my-krathong-title">{s.myKrathongTitle}</h2>
           <button type="button" className="btn ghost" onClick={() => setShowJourney(true)}>
@@ -758,6 +770,7 @@ export default function Page() {
 
       {/* Seven destinations */}
       <section className="section reveal" id="destinations" aria-labelledby="dest-title">
+        <p className="kicker">Seven nights · Seven rivers</p>
         <div className="section-head">
           <h2 id="dest-title">{s.destinationsTitle}</h2>
           <span className="hint">
@@ -768,7 +781,7 @@ export default function Page() {
         </div>
         <p className="section-intro">{s.destinationsHint}</p>
         <div className="dest-strip">
-          {DESTINATIONS.map((d) => {
+          {DESTINATIONS.map((d, i) => {
             const done = stamps.includes(d.id);
             const visited = visits.includes(d.id);
             const open = isOpenDay(cal, d.day);
@@ -778,6 +791,7 @@ export default function Page() {
                 key={d.id}
                 type="button"
                 className={`dest ${state}`}
+                style={{ '--i': i } as React.CSSProperties}
                 disabled={!open || done}
                 aria-label={`${d.name[lang]} — ${state === 'stamped' ? s.stamped : state === 'locked' ? s.destOpens(shortDate(cal.dates[d.day - 1], lang)) : state === 'visited' ? s.destVisited : s.destVisit}`}
                 onClick={() => onDestination(d)}
@@ -805,6 +819,7 @@ export default function Page() {
 
       {/* Hidden secrets (Chunk C1): all seven, with found state. */}
       <section className="section reveal" aria-labelledby="secrets-title">
+        <p className="kicker">Hidden secrets</p>
         <div className="section-head">
           <h2 id="secrets-title">{s.secretsTitle}</h2>
         </div>
@@ -825,6 +840,7 @@ export default function Page() {
 
       {/* Missions — all seven nights (chunk A; the Me tab lists these once C4 lands it there). */}
       <section className="section reveal" id="missions" aria-labelledby="missions-all-title">
+        <p className="kicker">All seven nights</p>
         <div className="section-head">
           <h2 id="missions-all-title">{s.missionsAllTitle}</h2>
         </div>
@@ -833,6 +849,7 @@ export default function Page() {
 
       {/* Wish wall */}
       <section className="section reveal" id="wishes" aria-labelledby="wall-title">
+        <p className="kicker">Wishes floating</p>
         <div className="section-head">
           <h2 id="wall-title">{s.wallTitle}</h2>
         </div>

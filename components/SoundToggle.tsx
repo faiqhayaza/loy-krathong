@@ -1,9 +1,11 @@
 // Sound toggle in the topbar: 🔊/🔇 with a label in the visitor's
 // language. State lives in lib/audio (persisted in localStorage, default
-// ON); the component only mirrors it. Initial state is `true` and syncs
-// from storage in an effect, so the server render and the first client
-// render always agree (no hydration mismatch for a previously-muted
-// visitor).
+// ON); the component only mirrors it. The mirrored state is the HONEST
+// one — sound is "on" only while the music is actually playing, so
+// after a reload it reads "off" until the first gesture starts the
+// kalimba, and it never flips by itself. The initial state is the same
+// on the server and the first client render (no music has started on
+// either), so there is no hydration mismatch.
 
 'use client';
 
@@ -13,9 +15,9 @@ import { t } from '@/lib/i18n';
 import { audio } from '@/lib/audio';
 
 export default function SoundToggle({ lang }: { lang: Lang }) {
-  const [on, setOn] = useState(true);
+  const [on, setOn] = useState(() => audio.isEffectivelyOn());
   useEffect(() => {
-    setOn(audio.isEnabled());
+    setOn(audio.isEffectivelyOn());
     return audio.subscribe(setOn);
   }, []);
   const s = t(lang);

@@ -50,6 +50,7 @@ export default function Specials({ lang, tick, onOpenDialog, onFloatScroll }: Pr
 
   return (
     <section className="section reveal" aria-labelledby="specials-title" data-testid="specials">
+      <p className="kicker">Seven specials</p>
       <div className="section-head">
         <h2 id="specials-title">{s.specialsTitle}</h2>
         {preview !== null && (
@@ -62,13 +63,13 @@ export default function Specials({ lang, tick, onOpenDialog, onFloatScroll }: Pr
       </div>
       <p className="section-intro">{s.specialsHint}</p>
       <div className="specials-grid">
-        {DESTINATIONS.map((d) => {
+        {DESTINATIONS.map((d, i) => {
           const kind = d.special.kind as SpecialKind;
           const open = specialOpen(cal, kind);
           const done = doneMap.get(kind) ?? false;
           const tonight = cal.liveDay === d.day;
           return (
-            <article className={`special-card ${done ? 'done' : !open ? 'locked' : 'open'}`} key={d.id} data-testid={`special-${kind}`}>
+            <article className={`special-card ${done ? 'done' : !open ? 'locked' : 'open'}${kind === 'finale' ? ' finale' : ''}`} key={d.id} data-testid={`special-${kind}`} style={{ '--i': i } as React.CSSProperties}>
               <span className="special-icon" aria-hidden="true">
                 {SPECIAL_ICON[kind] ?? '✨'}
               </span>

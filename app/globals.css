@@ -20,6 +20,21 @@
   --line-soft: rgba(239, 232, 216, 0.14);
   --card: rgba(255, 255, 255, 0.045);
   --card-solid: #12173a;
+  /* Designer C — three surface levels (shadcn-style depth): page,
+     cards, and raised panels (dialogs, pinned wish, builder preview).
+     One radius scale, one easing, one duration scale (Motion-style
+     vocabulary, implemented in pure CSS — no new dependency). */
+  --surface-0: var(--night-0);
+  --surface-1: rgba(255, 255, 255, 0.045);
+  --surface-2: #12173a;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 150ms;
+  --dur-base: 300ms;
+  --dur-slow: 500ms;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --display: var(--font-display), 'Prompt', 'Sarabun', 'Leelawadee UI', 'Noto Sans Thai', system-ui, sans-serif;
   --body: var(--font-body), 'Sarabun', 'Leelawadee UI', 'Noto Sans Thai', system-ui, sans-serif;
   --radius: 18px;
@@ -65,11 +80,18 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .site-footer span:first-child { font-family: var(--display); font-weight: 600; color: var(--cream); }
 
-/* Header */
+/* Header — sticky glass (Geist-style event header): the brand, nav and
+   controls stay reachable over the hero and the river as you scroll.
+   The bar spans the page container edge to edge; on mobile the
+   subtitle hides so the nav row fits. */
 .topbar {
+  position: sticky; top: 0; z-index: 40;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 16px 0 8px; flex-wrap: wrap;
+  padding: 12px 16px 10px; margin: 0 -16px; flex-wrap: wrap;
+  background: rgba(7, 10, 31, 0.85); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line-soft);
 }
+@media (min-width: 960px) { .topbar { margin: 0 -24px; padding-left: 24px; padding-right: 24px; } }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--cream); }
 .brand-mark { font-size: 30px; line-height: 1; }
 .brand-name { font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: 0.02em; }
@@ -105,18 +127,30 @@ button, input, textarea { font: inherit; color: inherit; }
   .topnav a { padding: 7px 9px; font-size: 13px; }
   .lang-toggle button { padding: 7px 9px; }
   .sound-toggle { padding: 7px 9px; }
+  /* The date line is repeated in the phase banner and the hero, so the
+     brand stays one line on a phone. */
+  .brand-sub { display: none; }
 }
 
-/* Hero */
-.hero { position: relative; border-radius: 24px; overflow: hidden; margin-top: 10px; border: 1px solid var(--line-soft); }
-.hero canvas { display: block; width: 100%; height: 460px; }
-@media (min-width: 960px) { .hero canvas { height: 560px; } }
+/* Hero — full-bleed sky (Designer C): no box, no border, no radius.
+   The hero IS the river's sky — it runs edge to edge and the river
+   follows directly below it, so the night is one continuous scene.
+   The breakout escapes the centred .page container. */
+.hero {
+  position: relative; overflow: hidden;
+  width: 100vw; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
+}
+.hero canvas { display: block; width: 100%; height: 560px; }
+@media (min-width: 960px) { .hero canvas { height: 640px; } }
 .hero-copy {
   position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end;
   padding: 24px 20px; gap: 10px;
   background: linear-gradient(180deg, rgba(7, 10, 31, 0.05) 40%, rgba(7, 10, 31, 0.82) 88%);
   pointer-events: none;
 }
+/* The copy sits in the centred column even though the hero is
+   full-bleed, so the text lines up with every section below it. */
+@media (min-width: 960px) { .hero-copy { padding-left: max(24px, calc(50vw - 566px)); padding-right: max(24px, calc(50vw - 566px)); } }
 .hero-copy > * { pointer-events: auto; }
 .eyebrow {
   font-family: var(--display); font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
@@ -136,38 +170,53 @@ button, input, textarea { font: inherit; color: inherit; }
 .countdown .cd-note { font-size: 13px; color: var(--muted); }
 .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
-/* Buttons */
+/* Buttons — one easing, one duration scale; the primary lifts on
+   hover and presses on tap. Gold is the single accent, reserved for
+   the primary action and earned states. */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   min-height: 46px; padding: 11px 20px; border-radius: 999px; border: 1px solid transparent;
   font-family: var(--display); font-weight: 600; font-size: 15px; cursor: pointer; text-decoration: none;
-  transition: transform 0.12s ease, background-color 0.15s ease, border-color 0.15s ease;
+  transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 .btn:active { transform: translateY(1px); }
 .btn.primary { background: var(--gold); color: #241a00; }
-.btn.primary:hover { background: var(--gold-soft); }
+.btn.primary:hover { background: var(--gold-soft); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(232, 179, 75, 0.28); }
 .btn.ghost { background: rgba(7, 10, 31, 0.45); border-color: var(--line-soft); color: var(--cream); backdrop-filter: blur(4px); }
-.btn.ghost:hover { border-color: var(--line); }
+.btn.ghost:hover { border-color: var(--line); transform: translateY(-1px); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .btn.small { min-height: 36px; padding: 6px 14px; font-size: 13.5px; }
 
-/* Sections */
-.section { margin-top: 56px; scroll-margin-top: 16px; }
+/* Sections — one rhythm (Geist-style): 96px between major sections on
+   desktop, 64px on mobile. Every section opens with a mono uppercase
+   kicker, then a display headline with tight tracking, then a muted
+   intro. Metadata (counts, dates) is mono, tabular, and never wraps.
+   scroll-margin-top clears the sticky topbar: 84px on desktop (one
+   row, ~60px) and 120px on mobile (two rows, ~110px) — a section
+   jumped to by an anchor must never land under the bar. */
+.section { margin-top: 96px; scroll-margin-top: 84px; }
+@media (max-width: 960px) { .section { margin-top: 64px; scroll-margin-top: 120px; } }
+.kicker {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold-soft);
+  margin: 0 0 8px;
+}
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
-.section-head h2 { font-size: clamp(21px, 3vw, 28px); color: var(--cream); }
-.section-head .hint { color: var(--muted); font-size: 14px; }
-.section-intro { color: var(--muted); max-width: 68ch; margin-bottom: 16px; }
+.section-head h2 { font-size: clamp(28px, 3.6vw, 40px); letter-spacing: -0.02em; color: var(--cream); }
+.section-head .hint { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.section-intro { color: #cfc8e8; max-width: 68ch; margin-bottom: 16px; }
 
 /* Destinations */
 .dest-strip {
-  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(180px, 1fr);
-  gap: 10px; overflow-x: auto; padding: 4px 2px 12px; scrollbar-width: thin;
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
 }
+@media (min-width: 640px) { .dest-strip { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 960px) { .dest-strip { grid-template-columns: repeat(7, 1fr); } }
 .dest {
   position: relative; text-align: left; cursor: pointer; border-radius: 16px; padding: 14px;
   background: var(--card); border: 1px solid var(--line-soft); color: var(--ink);
   display: flex; flex-direction: column; gap: 3px; min-height: 118px;
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  transition: border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
 .dest:hover { border-color: var(--line); transform: translateY(-2px); }
 .dest.stamped { border-color: var(--gold); background: linear-gradient(180deg, rgba(232, 179, 75, 0.16), rgba(232, 179, 75, 0.05)); }
@@ -191,11 +240,23 @@ button, input, textarea { font: inherit; color: inherit; }
 .dest .dest-cta { margin-top: auto; font-size: 12.5px; color: var(--gold-soft); font-weight: 600; }
 @keyframes stamp-in { from { transform: rotate(6deg) scale(2.2); opacity: 0; } to { transform: rotate(6deg) scale(1); opacity: 1; } }
 
-/* River + builder layout */
-.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
-@media (min-width: 960px) { .layout { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); } }
-.river-wrap { position: relative; border-radius: 20px; overflow: hidden; border: 1px solid var(--line-soft); background: #0a1030; }
-.river-wrap canvas { display: block; width: 100%; height: 480px; cursor: crosshair; }
+/* River — full-bleed, first under the hero (Designer C). The river
+   spans the page left to right: the wrap breaks out of the centred
+   .page container, ~72vh tall, no border, no radius, no side column,
+   no dead space below it. The head sits in the container directly
+   above the water, on the page background, so the hero's dark foot
+   flows into it with no seam. */
+.river-section { margin-top: 0; scroll-margin-top: 84px; }
+@media (max-width: 960px) { .river-section { scroll-margin-top: 120px; } }
+.river-head { padding: 28px 0 18px; }
+.river-head .section-head { margin-bottom: 4px; }
+.river-head .section-intro { margin-bottom: 0; }
+.river-wrap {
+  position: relative; overflow: hidden; background: #0a1030;
+  width: 100vw; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
+  height: clamp(560px, 72vh, 720px);
+}
+.river-wrap canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 /* The river scene (design variant A, photo-forward): four layers,
    bottom to top. (1) The night-graded Chao Phraya photograph, an <img>
    cover-fit to the panel — object-position 50% keeps the temple (at
@@ -204,12 +265,14 @@ button, input, textarea { font: inherit; color: inherit; }
    site serves, so the photo's height always maps to the panel height
    and its waterline stays at 67% of the panel. (2) The WebGL water
    canvas: the shader paints only below the waterline, at partial
-   opacity, over the photograph's water. (3) The main canvas, in normal
-   flow so it sets the panel height, carrying the sky life, the water
-   overlays and the boats. (4) The name-tag canvas, above everything so
-   no tag is ever cut by the temple. The photograph and the water canvas
-   never take pointer input. */
-.river-scene { position: relative; }
+   opacity, over the photograph's water. (3) The main canvas, absolutely
+   sized to the scene (see the note below) so the wrap's clamp height
+   is the scene's height — it used to be in normal flow and set the
+   panel height, which broke when the wrap took a fixed clamp height.
+   It carries the sky life, the water overlays and the boats. (4) The
+   name-tag canvas, above everything so no tag is ever cut by the
+   temple. The photograph and the water canvas never take pointer input. */
+.river-scene { position: absolute; inset: 0; }
 .river-scene .river-backdrop {
   position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0;
   object-fit: cover; object-position: 50% center; pointer-events: none;
@@ -219,8 +282,13 @@ button, input, textarea { font: inherit; color: inherit; }
   position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1;
   pointer-events: none;
 }
+/* The main canvas is absolutely sized to the scene (which fills the
+   wrap), NOT height:100% of a content-sized parent: a percentage
+   height against a parent whose height depends on the canvas itself
+   falls back to the canvas's intrinsic 2:1 ratio — 390/2 = 195px on
+   a phone, while the wrap is 608px. The scene must own the size. */
 .river-scene > canvas:not(.river-water):not(.river-tags) {
-  position: relative; z-index: 2;
+  position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%;
 }
 /* Name-tag canvas: same box as the main canvas (the .river-wrap canvas
    rule sizes both), layered above everything so no tag is ever cut.
@@ -231,11 +299,13 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .temple-window { animation: window-glow 3.2s ease-in-out infinite; }
 @keyframes window-glow { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
-@media (min-width: 960px) { .river-wrap canvas { height: 560px; } }
 .river-bar {
   position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between;
   gap: 8px; align-items: flex-start; pointer-events: none; z-index: 2;
 }
+/* The river photograph is CC0 (verified via the Commons API — no
+   author stated, attribution not required), so no credit line is
+   shown at all: just the picture of the river (Faiq, 2026-11-07). */
 .river-bar > * { pointer-events: auto; }
 .pill {
   display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px;
@@ -244,10 +314,28 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .pill button { background: none; border: 0; color: var(--gold-soft); font-weight: 700; cursor: pointer; padding: 0; font-size: 13px; }
 .pill.gold { border-color: var(--line); color: var(--gold-soft); }
+/* The empty state is a glass chip at the bottom of the water — never
+   text pasted across the temple. */
 .river-empty {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  color: var(--muted); font-size: 15px; padding: 20px; text-align: center; pointer-events: none;
+  position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%);
+  width: max-content; max-width: calc(100% - 32px);
+  background: rgba(7, 10, 31, 0.66); border: 1px solid var(--line-soft);
+  backdrop-filter: blur(4px); border-radius: 999px; padding: 10px 18px;
+  color: var(--cream); font-size: 14.5px; text-align: center; pointer-events: none;
+  z-index: 2;
 }
+
+/* Float — below the river (Designer C): the builder on the left, the
+   night's missions and milestone in a rail on the right. The form is
+   chunked into numbered steps with mono kickers, so a 1212px form
+   reads as four small decisions instead of one wall. */
+.float-section { margin-top: 64px; scroll-margin-top: 84px; }
+@media (max-width: 960px) { .float-section { margin-top: 48px; scroll-margin-top: 120px; } }
+.float-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (min-width: 960px) { .float-grid { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); } }
+.float-rail { display: flex; flex-direction: column; }
+.float-rail .missions-panel, .float-rail .milestone-card { margin-top: 0; }
+.float-rail .milestone-card { margin-top: 20px; }
 .tip-card {
   position: absolute; z-index: 5; width: min(300px, calc(100% - 24px));
   background: #fdf6e7; color: #2a2140; border-radius: 14px; padding: 12px 14px;
@@ -280,18 +368,43 @@ button, input, textarea { font: inherit; color: inherit; }
    element taller than the viewport can never share its column, so the
    whole column scrolls as one now. */
 .builder {
-  border-radius: var(--radius); border: 1px solid var(--line-soft); background: var(--card);
+  border-radius: var(--radius-md); border: 1px solid var(--line-soft); background: var(--surface-1);
   padding: 18px; display: flex; flex-direction: column; gap: 14px;
 }
 .builder h2 { font-size: 21px; color: var(--cream); }
-.preview { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0 2px; }
+/* One step of the form: a mono kicker, a hairline above it (except
+   the first), and the step's fields. */
+.builder .step { display: flex; flex-direction: column; gap: 14px; padding-top: 16px; border-top: 1px solid var(--line-soft); }
+.builder .step:first-of-type { padding-top: 0; border-top: 0; }
+.step-kicker {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold-soft);
+  margin: 0;
+}
+/* The preview is the only sticky thing in the form: a small card
+   (~260px) that stays at the top of the viewport while the visitor
+   scrolls the fields, so they always see what they are building.
+   The whole form is NEVER sticky (that caused the 173,964 px²
+   overlap in round 1 — a sticky element taller than the viewport
+   cannot share its column). Static on mobile, where it would eat
+   the screen. */
+.preview {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 12px; background: var(--surface-2); border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+@media (min-width: 960px) { .preview { position: sticky; top: 84px; z-index: 2; } }
 .preview .preview-tag { font-size: 13px; color: var(--gold-soft); font-weight: 600; min-height: 20px; }
 .field { display: flex; flex-direction: column; gap: 5px; }
 .field label { font-weight: 600; font-size: 14px; color: var(--cream); }
 .field .hint { color: var(--muted); font-size: 12.5px; }
 .field input[type='text'], .field textarea, .field input[type='search'] {
-  width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line-soft);
+  width: 100%; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line-soft);
   background: rgba(7, 10, 31, 0.5); color: var(--cream);
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.field input:focus, .field textarea:focus, .field input[type='search']:focus {
+  border-color: var(--gold); outline: none; box-shadow: 0 0 0 3px rgba(232, 179, 75, 0.18);
 }
 .field input::placeholder, .field textarea::placeholder { color: #7d78a3; }
 .field textarea { resize: vertical; min-height: 84px; }
@@ -392,10 +505,14 @@ button, input, textarea { font: inherit; color: inherit; }
 .wall-tools .field { flex: 1 1 260px; }
 .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }
 .wish-card {
-  border-radius: var(--radius); border: 1px solid var(--line-soft); background: var(--card);
+  border-radius: var(--radius-md); border: 1px solid var(--line-soft); background: var(--surface-1);
   padding: 14px 16px; display: flex; flex-direction: column; gap: 9px;
-  animation: rise-in 0.4s ease both;
+  transition: border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
+.wish-card:hover { border-color: var(--line); transform: translateY(-2px); }
+/* Your own krathong's card gets a gold left edge, so it is findable
+   at a glance among everyone else's. */
+.wish-card.mine { border-left: 3px solid var(--gold); }
 .wish-card .wc-top { display: flex; align-items: center; gap: 8px; }
 .wish-card .wc-glyph { font-size: 22px; line-height: 1; }
 .wish-card .wc-name { font-weight: 600; color: var(--cream); font-size: 14.5px; }
@@ -405,9 +522,22 @@ button, input, textarea { font: inherit; color: inherit; }
 .wish-card .wc-trans button { background: none; border: 0; color: var(--gold-soft); cursor: pointer; padding: 0; font-size: 12.5px; font-weight: 600; }
 .mine-badge { font-size: 11px; font-weight: 700; color: var(--gold-deep); background: var(--gold-soft); border-radius: 999px; padding: 2px 8px; }
 
-/* Reveal on scroll */
-.reveal { opacity: 0; transform: translateY(14px); transition: opacity 0.5s ease, transform 0.5s ease; }
+/* Reveal on scroll — one easing, one duration scale. Grid children
+   stagger in at 80ms steps (Motion-style staggerChildren), driven by
+   an inline --i on each child. The section fades once; the children
+   cascade inside it. */
+.reveal { opacity: 0; transform: translateY(14px); transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out); }
 .reveal.in { opacity: 1; transform: none; }
+.reveal .dest-strip > *, .reveal .specials-grid > *, .reveal .wall > *,
+.reveal .mission-list > *, .reveal .secrets-list > *, .reveal .missions-all > * {
+  opacity: 0; transform: translateY(10px);
+  transition: opacity var(--dur-slow) var(--ease-out) calc(var(--i, 0) * 80ms),
+    transform var(--dur-slow) var(--ease-out) calc(var(--i, 0) * 80ms);
+}
+.reveal.in .dest-strip > *, .reveal.in .specials-grid > *, .reveal.in .wall > *,
+.reveal.in .mission-list > *, .reveal.in .secrets-list > *, .reveal.in .missions-all > * {
+  opacity: 1; transform: none;
+}
 
 .flame-flicker { animation: flick 1.6s ease-in-out infinite alternate; transform-origin: 50% 100%; }
 @keyframes flick {
@@ -417,8 +547,12 @@ button, input, textarea { font: inherit; color: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; transition-delay: 0ms !important; }
   .reveal { opacity: 1; transform: none; }
+  .reveal .dest-strip > *, .reveal .specials-grid > *, .reveal .wall > *,
+  .reveal .mission-list > *, .reveal .secrets-list > *, .reveal .missions-all > * {
+    opacity: 1; transform: none;
+  }
 }
 
 /* Identity gate (D1) — sign-up / sign-in, the whole first page: the
@@ -788,6 +922,10 @@ button, input, textarea { font: inherit; color: inherit; }
 .mk-identity code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--gold-soft); letter-spacing: 0.08em; }
 .mk-editor { display: grid; gap: 20px; }
 @media (min-width: 760px) { .mk-editor { grid-template-columns: 240px 1fr; } }
+/* The pickers' labels are <p class="picker-label">, which carries no
+   margin — the groups ran together with no gap between them. */
+.mk-pickers .picker-label { margin: 18px 0 8px; }
+.mk-pickers .picker-label:first-child { margin-top: 0; }
 .mk-pickers .btn.primary { margin-top: 14px; }
 .my-wishes { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .my-wish {
@@ -803,3 +941,14 @@ button, input, textarea { font: inherit; color: inherit; }
 .my-wish-text { color: var(--cream); font-size: 15px; line-height: 1.5; }
 .my-wish-meta { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
 .my-wish-chip { color: var(--ink); background: rgba(239, 232, 216, 0.08); border-radius: 999px; padding: 1px 8px; font-size: 12.5px; }
+@media (min-width: 960px) {
+  .special-card.finale { grid-column: 1 / -1; }
+}
+.special-card.finale {
+  border-color: var(--line);
+  background: linear-gradient(180deg, rgba(232, 179, 75, 0.12), rgba(232, 179, 75, 0.03));
+  align-items: center; text-align: center;
+  padding: 16px 24px;
+}
+.special-card.finale p { max-width: 56ch; }
+.special-card.finale .btn { min-width: 240px; }
