@@ -24,7 +24,6 @@ import {
   claimMission,
   loadClaims,
   milestoneFor,
-  missionsFor,
   missionsForDay,
   totalRiverLight,
   type Mission,
@@ -61,7 +60,7 @@ function stateLabel(s: Strings, state: Mission['state']): string {
   return '';
 }
 
-function MissionRow({ lang, mission, cal, index }: { lang: Lang; mission: Mission; cal: FestivalCalendar; index: number }) {
+export function MissionRow({ lang, mission, cal, index }: { lang: Lang; mission: Mission; cal: FestivalCalendar; index: number }) {
   const s = t(lang);
   const target = goTarget(mission);
   const label = stateLabel(s, mission.state);
@@ -180,33 +179,5 @@ export function MilestoneCard({ lang, cal, day }: { lang: Lang; cal: FestivalCal
       <p className="milestone-local">{s.milestoneLocalNote}</p>
       <p className="milestone-total">{s.totals(totalRiverLight(loadClaims()))}</p>
     </section>
-  );
-}
-
-/** All seven nights, one <details> each — the live night open. */
-export function MissionsAll({ lang, cal }: { lang: Lang; cal: FestivalCalendar }) {
-  useMissionsVersion();
-  const s = t(lang);
-  const all = missionsFor(cal, loadEvents(), loadClaims());
-  return (
-    <div className="missions-all">
-      {DESTINATIONS.map((dest, di) => {
-        const night = all.filter((m) => m.day === dest.day);
-        const done = night.filter((m) => m.state === 'completed' || m.state === 'claimed').length;
-        return (
-          <details key={dest.id} className="night" open={cal.liveDay === dest.day} style={{ '--i': di } as React.CSSProperties}>
-            <summary>
-              <span>{s.missionsNight(dest.day, dest.name[lang])}</span>
-              <span className="pill">{s.missionsDone(done, 3)}</span>
-            </summary>
-            <ul className="mission-list">
-              {night.map((m, i) => (
-                <MissionRow key={m.slot} lang={lang} mission={m} cal={cal} index={i} />
-              ))}
-            </ul>
-          </details>
-        );
-      })}
-    </div>
   );
 }

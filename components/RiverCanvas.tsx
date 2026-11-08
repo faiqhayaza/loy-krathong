@@ -136,13 +136,20 @@ interface Props {
 }
 
 const ROWS = 4;
-// The photograph's waterline: the Chao Phraya photo's shore sits at 67%
-// of its height (measured from the pixels: the shore/water boundary is
-// at y=1170 of the 2112-tall original, and the 16:9 crop puts it at
-// 0.67), and the panel is taller (relative) than the photo at every
-// viewport the site serves, so the photo's height always maps to the
-// panel height and the waterline stays at this fraction.
-const RIVER_FRAC = 0.67;
+// The photograph's waterline: measured from the pixels of the shipped
+// webp, the warm temple/bank ends at ~0.70 of the photo height, the
+// water surface (with the temple's reflection columns) begins at
+// ~0.72-0.75 and the open water at ~0.82. The animated waterline sits
+// at 0.78 — just below the photo's displayed waterline at the
+// viewports the site serves (the taller wrap keeps the panel close to
+// the photo's 16:9, so the photo is barely cropped at desktop and
+// height-constrained on mobile, and the displayed waterline lands at
+// ~0.75-0.78), so the animated water starts in the water, never over
+// the land. The earlier 0.67 put the waterline inside the temple and
+// flooded the bank. At very wide viewports the photo's water is
+// cropped out of frame, so a residual flood band remains there —
+// the waterline cannot track a waterline the photo no longer shows.
+const RIVER_FRAC = 0.78;
 // Moon and temple, as fractions of panel width/height — measured from
 // the photograph's pixels (temple centre 0.50, its reflection column
 // 0.59, spire top 0.20; the photo has no moon, so the drawn moon keeps
@@ -591,9 +598,10 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
 
     function rowY(row: number): number {
       // Row 0 is the far bank (small, high), row 3 the near bank (large,
-      // low). The water is the bottom third of the panel, so the four
-      // rows pack into 0.70-0.925 of the height.
-      return h * (0.7 + row * 0.075);
+      // low). The rows pack into the water below the waterline, with a
+      // margin at the bottom so the nearest krathong (and its splash
+      // rings) never clips the panel edge.
+      return horizon() + 14 + (row * (h - horizon() - 58)) / (ROWS - 1);
     }
     function rowScale(row: number): number {
       return 0.62 + row * 0.22;
@@ -841,7 +849,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     // launchRocket(fast): the first rocket of a 5-click preview is
     // fast-fused — vy ~9 instead of ~5 and a higher burst height — so
     // the first burst lands ~1–2 s after the clicks instead of ~9 s.
-    // A climbs from the 0.67h waterline to the sky, a long fuse at the
+    // A climbs from the waterline to the sky, a long fuse at the
     // normal speed; the fast fuse only shortens that first climb, the
     // rest of the show keeps the normal rockets.
     function launchRocket(fast = false) {

@@ -219,38 +219,48 @@ button, input, textarea { font: inherit; color: inherit; }
 .section-head .hint { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .section-intro { color: #cfc8e8; max-width: 68ch; margin-bottom: 16px; }
 
-/* Destinations */
-.dest-strip {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+/* Seven Nights Seven Rivers — in the float rail, below the milestone
+   card. This is the single home for the seven nights (the standalone
+   destinations strip and the Missions — All Seven Nights section are
+   removed); each night is a compact card: a passport button on top
+   and that night's three missions in a <details> below it, so the
+   claim feature lives on the destination it belongs to. */
+.rail-dests { margin-top: 20px; }
+.rail-dests .section-head { margin-bottom: 2px; }
+.rail-dests h3 { font-size: 17px; color: var(--cream); }
+.rail-dests .section-intro { margin-bottom: 12px; }
+.rail-dest-list { display: flex; flex-direction: column; gap: 10px; }
+.rail-dest {
+  border: 1px solid var(--line-soft); border-radius: 14px; overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
 }
-@media (min-width: 640px) { .dest-strip { grid-template-columns: repeat(4, 1fr); } }
-@media (min-width: 960px) { .dest-strip { grid-template-columns: repeat(7, 1fr); } }
-.dest {
-  position: relative; text-align: left; cursor: pointer; border-radius: 16px; padding: 14px;
-  background: var(--card); border: 1px solid var(--line-soft); color: var(--ink);
-  display: flex; flex-direction: column; gap: 3px; min-height: 118px;
-  transition: border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+.rail-dest.stamped { border-color: var(--gold); background: linear-gradient(180deg, rgba(232, 179, 75, 0.16), rgba(232, 179, 75, 0.05)); }
+.rail-dest.visited { border-color: var(--line); }
+.rail-dest.locked { opacity: 0.55; }
+.rail-dest-head {
+  display: grid; grid-template-columns: auto 1fr auto; column-gap: 10px; align-items: center;
+  grid-template-areas: "icon line1 cta" "icon river cta";
+  width: 100%; padding: 10px 12px; background: none; border: 0; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
 }
-.dest:hover { border-color: var(--line); transform: translateY(-2px); }
-.dest.stamped { border-color: var(--gold); background: linear-gradient(180deg, rgba(232, 179, 75, 0.16), rgba(232, 179, 75, 0.05)); }
-.dest.visited { border-color: var(--line); }
-.dest.locked { opacity: 0.55; cursor: default; }
-.dest.locked:hover { border-color: var(--line-soft); transform: none; }
-.dest .dest-top { display: flex; justify-content: space-between; align-items: center; }
-.dest .dest-icon { font-size: 20px; line-height: 1; }
-.dest .dest-night { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-.dest.locked .dest-cta { color: var(--muted); }
-.dest .dest-name { font-family: var(--display); font-weight: 600; font-size: 16px; color: var(--cream); }
-.dest .dest-name .th { display: block; font-weight: 400; font-size: 13px; color: var(--pink); }
-.dest .dest-river { font-size: 12.5px; color: var(--muted); }
-.dest .dest-note { font-size: 13px; color: #cfc8e8; margin-top: 4px; }
-.dest .dest-stamp {
-  position: absolute; top: 10px; right: 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--gold-deep); background: var(--gold-soft);
-  border-radius: 999px; padding: 3px 9px; transform: rotate(6deg);
-  animation: stamp-in 0.35s cubic-bezier(0.2, 1.6, 0.4, 1);
+.rail-dest-head:disabled { cursor: default; }
+.rail-dest-head:not(:disabled):hover .rail-dest-name { color: var(--gold-soft); }
+.rail-dest-icon { grid-area: icon; font-size: 20px; line-height: 1; }
+.rail-dest-line1 { grid-area: line1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
+.rail-dest-night { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.rail-dest-name { font-family: var(--display); font-weight: 600; font-size: 15px; color: var(--cream); }
+.rail-dest-name .th { font-weight: 400; font-size: 12.5px; color: var(--pink); }
+.rail-dest-river { grid-area: river; font-size: 12.5px; color: var(--muted); }
+.rail-dest-cta { grid-area: cta; font-size: 12.5px; color: var(--gold-soft); font-weight: 600; text-align: right; max-width: 110px; }
+.rail-dest.locked .rail-dest-cta { color: var(--muted); }
+.rail-dest-missions { border-top: 1px solid var(--line-soft); padding: 4px 12px 10px; }
+.rail-dest-missions summary {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  cursor: pointer; padding: 8px 0 4px; font-weight: 700; color: var(--cream); font-size: 13.5px;
+  list-style: none;
 }
-.dest .dest-cta { margin-top: auto; font-size: 12.5px; color: var(--gold-soft); font-weight: 600; }
+.rail-dest-missions summary::-webkit-details-marker { display: none; }
+.rail-dest-missions .mission-list { margin-top: 6px; }
 @keyframes stamp-in { from { transform: rotate(6deg) scale(2.2); opacity: 0; } to { transform: rotate(6deg) scale(1); opacity: 1; } }
 
 /* River — full-bleed, first under the hero (Designer C). The river
@@ -267,7 +277,7 @@ button, input, textarea { font: inherit; color: inherit; }
 .river-head .section-intro { margin-bottom: 0; }
 .river-wrap {
   position: relative; overflow: hidden; background: #0a1030;
-  height: clamp(600px, 80vh, 840px);
+  height: clamp(720px, 92vh, 1020px);
 }
 .river-wrap canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 /* The river scene (design variant A, photo-forward): four layers,
@@ -278,7 +288,10 @@ button, input, textarea { font: inherit; color: inherit; }
    constrains and the photo is cropped top and bottom — object-position
    50% 40% shifts the crop window up so Wat Arun's spire tip (19.7%
    of the photo height) stays in frame at every viewport the site
-   serves, with the waterline near the lower third. (2) The WebGL water
+   serves, with the waterline near the lower quarter. The taller wrap
+   (92vh) keeps the panel close to the photo's 16:9, so the crop is
+   shallow at desktop and the photo's waterline sits near the
+   animated waterline (RIVER_FRAC in RiverCanvas.tsx). (2) The WebGL water
    canvas: the shader paints only below the waterline, at partial
    opacity, over the photograph's water. (3) The main canvas, absolutely
    sized to the scene (see the note below) so the wrap's clamp height
@@ -545,14 +558,14 @@ button, input, textarea { font: inherit; color: inherit; }
    cascade inside it. */
 .reveal { opacity: 0; transform: translateY(14px); transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out); }
 .reveal.in { opacity: 1; transform: none; }
-.reveal .dest-strip > *, .reveal .specials-grid > *, .reveal .wall > *,
-.reveal .mission-list > *, .reveal .secrets-list > *, .reveal .missions-all > * {
+.reveal .rail-dest-list > *, .reveal .specials-grid > *, .reveal .wall > *,
+.reveal .mission-list > *, .reveal .secrets-list > * {
   opacity: 0; transform: translateY(10px);
   transition: opacity var(--dur-slow) var(--ease-out) calc(var(--i, 0) * 80ms),
     transform var(--dur-slow) var(--ease-out) calc(var(--i, 0) * 80ms);
 }
-.reveal.in .dest-strip > *, .reveal.in .specials-grid > *, .reveal.in .wall > *,
-.reveal.in .mission-list > *, .reveal.in .secrets-list > *, .reveal.in .missions-all > * {
+.reveal.in .rail-dest-list > *, .reveal.in .specials-grid > *, .reveal.in .wall > *,
+.reveal.in .mission-list > *, .reveal.in .secrets-list > * {
   opacity: 1; transform: none;
 }
 
@@ -566,8 +579,8 @@ button, input, textarea { font: inherit; color: inherit; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; transition-delay: 0ms !important; }
   .reveal { opacity: 1; transform: none; }
-  .reveal .dest-strip > *, .reveal .specials-grid > *, .reveal .wall > *,
-  .reveal .mission-list > *, .reveal .secrets-list > *, .reveal .missions-all > * {
+  .reveal .rail-dest-list > *, .reveal .specials-grid > *, .reveal .wall > *,
+  .reveal .mission-list > *, .reveal .secrets-list > * {
     opacity: 1; transform: none;
   }
 }
@@ -836,17 +849,6 @@ button, input, textarea { font: inherit; color: inherit; }
 .milestone-done { color: var(--gold-soft); font-weight: 700; font-size: 14px; margin-top: 4px; }
 .milestone-local { color: var(--muted); font-size: 12.5px; margin-top: 8px; font-style: italic; }
 .milestone-total { color: var(--ink); font-size: 13px; margin-top: 2px; }
-.missions-all { display: grid; gap: 10px; }
-.missions-all details.night {
-  border: 1px solid var(--line-soft); border-radius: 14px;
-  background: var(--card); padding: 4px 14px 12px;
-}
-.missions-all details.night summary {
-  display: flex; justify-content: space-between; align-items: center; gap: 10px;
-  cursor: pointer; padding: 10px 0 4px; font-weight: 700; color: var(--cream); font-size: 15.5px;
-  list-style: none;
-}
-.missions-all details.night summary::-webkit-details-marker { display: none; }
 /* --- Chunk C: secrets, journey, welcome, My Krathong --- */
 
 /* Dialogs (secret riddle, welcome, journey card): a centred card over

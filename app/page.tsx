@@ -29,10 +29,10 @@ import SecretDialog from '@/components/SecretDialog';
 import SecretsPanel from '@/components/SecretsPanel';
 import WelcomeDialog from '@/components/WelcomeDialog';
 import JourneyCard from '@/components/JourneyCard';
-import { MilestoneCard, MissionsAll, MissionsPanel, panelDay, useMissionsVersion } from '@/components/Missions';
-import { loadClaims, milestoneFor } from '@/lib/missions';
+import { MilestoneCard, MissionRow, MissionsPanel, panelDay, useMissionsVersion } from '@/components/Missions';
+import { loadClaims, milestoneFor, missionsForDay } from '@/lib/missions';
 import { getIdentity, getVisitorId } from '@/lib/identity';
-import { recordEvent } from '@/lib/events';
+import { loadEvents, recordEvent } from '@/lib/events';
 import { bangkokDay } from '@/lib/bangkok';
 import { loadWelcomeDay } from '@/lib/welcome';
 import { isSecretFound } from '@/lib/secrets';
@@ -759,57 +759,75 @@ export default function Page() {
               {/* Chunk A side panel: tonight's missions + the milestone card. */}
               <MissionsPanel lang={lang} cal={cal} />
               <MilestoneCard lang={lang} cal={cal} day={milestoneDay} />
+              {/* Seven Nights Seven Rivers — in the rail, below the
+                  milestone card: it fills the blank the rail used to
+                  leave, and it is the single home for the seven nights.
+                  The standalone destinations strip and the Missions —
+                  All Seven Nights section are removed; each night's
+                  three missions live on its destination card (the
+                  <details> below the passport button), so the claim
+                  feature is not lost. Tonight's three missions appear
+                  both here and in the panel above — the panel is
+                  tonight's focus, the card is the per-night record. */}
+              <section className="rail-dests" id="destinations" aria-labelledby="rail-dest-title">
+                <p className="kicker">Seven nights · Seven rivers</p>
+                <div className="section-head">
+                  <h3 id="rail-dest-title">{s.destinationsTitle}</h3>
+                  <span className="hint">
+                    {lang === 'th'
+                      ? `${stamps.length} จาก 7 ตรา`
+                      : `${stamps.length} of 7 stamps`}
+                  </span>
+                </div>
+                <p className="section-intro">{s.destinationsHint}</p>
+                <div className="rail-dest-list">
+                  {DESTINATIONS.map((d, i) => {
+                    const done = stamps.includes(d.id);
+                    const visited = visits.includes(d.id);
+                    const open = isOpenDay(cal, d.day);
+                    const state = done ? 'stamped' : !open ? 'locked' : visited ? 'visited' : 'open';
+                    const nightMissions = missionsForDay(cal, loadEvents(), loadClaims(), d.day);
+                    const mDone = nightMissions.filter((m) => m.state === 'completed' || m.state === 'claimed').length;
+                    return (
+                      <div key={d.id} className={`rail-dest ${state}`} style={{ '--i': i } as React.CSSProperties}>
+                        <button
+                          type="button"
+                          className="rail-dest-head"
+                          disabled={!open || done}
+                          aria-label={`${d.name[lang]} — ${state === 'stamped' ? s.stamped : state === 'locked' ? s.destOpens(shortDate(cal.dates[d.day - 1], lang)) : state === 'visited' ? s.destVisited : s.destVisit}`}
+                          onClick={() => onDestination(d)}
+                        >
+                          <span className="rail-dest-icon" aria-hidden="true">{STAMP_ICON[d.id]}</span>
+                          <span className="rail-dest-line1">
+                            <span className="rail-dest-night">{s.destNight(d.day)}</span>
+                            <span className="rail-dest-name">
+                              {d.name[lang]} <span className="th" lang="th">{d.name.th}</span>
+                            </span>
+                          </span>
+                          <span className="rail-dest-river">{d.river[lang]}</span>
+                          <span className="rail-dest-cta">
+                            {done ? '✓' : !open ? s.destOpens(shortDate(cal.dates[d.day - 1], lang)) : visited ? s.stampCollect : s.destVisit}
+                          </span>
+                        </button>
+                        <details className="rail-dest-missions" open={cal.liveDay === d.day}>
+                          <summary>
+                            <span>{s.missionsLabel}</span>
+                            <span className="pill">{s.missionsDone(mDone, 3)}</span>
+                          </summary>
+                          <ul className="mission-list">
+                            {nightMissions.map((m, mi) => (
+                              <MissionRow key={m.slot} lang={lang} mission={m} cal={cal} index={mi} />
+                            ))}
+                          </ul>
+                        </details>
+                      </div>
+                    );
+                  })}
+                </div>
+                {stamps.length === 7 && <p className="hint" role="status">{s.passportComplete}</p>}
+              </section>
             </div>
           </div>
-        </section>
-
-        {/* Seven destinations */}
-        <section className="section reveal" id="destinations" aria-labelledby="dest-title">
-          <p className="kicker">Seven nights · Seven rivers</p>
-          <div className="section-head">
-            <h2 id="dest-title">{s.destinationsTitle}</h2>
-            <span className="hint">
-              {lang === 'th'
-                ? `${stamps.length} จาก 7 ตรา`
-                : `${stamps.length} of 7 stamps`}
-            </span>
-          </div>
-          <p className="section-intro">{s.destinationsHint}</p>
-          <div className="dest-strip">
-            {DESTINATIONS.map((d, i) => {
-              const done = stamps.includes(d.id);
-              const visited = visits.includes(d.id);
-              const open = isOpenDay(cal, d.day);
-              const state = done ? 'stamped' : !open ? 'locked' : visited ? 'visited' : 'open';
-              return (
-                <button
-                  key={d.id}
-                  type="button"
-                  className={`dest ${state}`}
-                  style={{ '--i': i } as React.CSSProperties}
-                  disabled={!open || done}
-                  aria-label={`${d.name[lang]} — ${state === 'stamped' ? s.stamped : state === 'locked' ? s.destOpens(shortDate(cal.dates[d.day - 1], lang)) : state === 'visited' ? s.destVisited : s.destVisit}`}
-                  onClick={() => onDestination(d)}
-                >
-                  <span className="dest-top">
-                    <span className="dest-icon" aria-hidden="true">{STAMP_ICON[d.id]}</span>
-                    <span className="dest-night">{s.destNight(d.day)}</span>
-                  </span>
-                  {done && <span className="dest-stamp">{s.stamped}</span>}
-                  <span className="dest-name">
-                    {d.name[lang]}
-                    <span className="th" lang="th">{d.name.th}</span>
-                  </span>
-                  <span className="dest-river">{d.river[lang]}</span>
-                  <span className="dest-note">{d.theme[lang]}</span>
-                  <span className="dest-cta">
-                    {done ? '✓' : !open ? s.destOpens(shortDate(cal.dates[d.day - 1], lang)) : visited ? s.stampCollect : s.destVisit}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {stamps.length === 7 && <p className="hint" role="status">{s.passportComplete}</p>}
         </section>
 
         {/* Hidden secrets (Chunk C1): all seven, with found state. */}
@@ -832,15 +850,6 @@ export default function Page() {
 
         {/* Chunk B — the seven specials, one per night. */}
         <Specials lang={lang} tick={eventsTick} onOpenDialog={openSpecial} onFloatScroll={scrollToFloat} />
-
-        {/* Missions — all seven nights (chunk A; the Me tab lists these once C4 lands it there). */}
-        <section className="section reveal" id="missions" aria-labelledby="missions-all-title">
-          <p className="kicker">All seven nights</p>
-          <div className="section-head">
-            <h2 id="missions-all-title">{s.missionsAllTitle}</h2>
-          </div>
-          <MissionsAll lang={lang} cal={cal} />
-        </section>
 
         {/* Wish wall */}
         <section className="section reveal" id="wishes" aria-labelledby="wall-title">

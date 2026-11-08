@@ -160,7 +160,7 @@ export const STRINGS = {
     // Missions + milestones (chunk A). The milestone total is device-local
     // until E1 — milestoneLocalNote says so plainly, in both languages.
     missionsTitle: 'Tonight’s missions',
-    missionsAllTitle: 'Missions — all seven nights',
+    missionsLabel: 'Missions',
     missionsDone: (done: number, total: number) => `${done} of ${total} done`,
     missionsLockedNote: 'The festival opens 18 November — each mission unlocks on its night.',
     missionsNight: (n: number, name: string) => `Night ${n} — ${name}`,
@@ -401,7 +401,7 @@ export const STRINGS = {
     // Missions + milestones (chunk A). The milestone total is device-local
     // until E1 — milestoneLocalNote says so plainly, in both languages.
     missionsTitle: 'ภารกิจคืนนี้',
-    missionsAllTitle: 'ภารกิจทั้งเจ็ดคืน',
+    missionsLabel: 'ภารกิจ',
     missionsDone: (done: number, total: number) => `ทำสำเร็จ ${done} จาก ${total}`,
     missionsLockedNote: 'เทศกาลเปิดวันที่ 18 พฤศจิกายน — แต่ละภารกิจจะปลดล็อกในคืนของมัน',
     missionsNight: (n: number, name: string) => `คืนที่ ${n} — ${name}`,
