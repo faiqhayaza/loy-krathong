@@ -206,7 +206,6 @@ export function downloadJourneyCard(journey: Journey, lang: Lang) {
 export default function JourneyCard({ lang, cal, journey, onClose }: Props) {
   const s = t(lang);
   const [saved, setSaved] = useState(false);
-  void cal;
 
   function save() {
     downloadJourneyCard(journey, lang);
@@ -252,6 +251,7 @@ export default function JourneyCard({ lang, cal, journey, onClose }: Props) {
             );
           })}
         </div>
+        {cal.phase === 'before' && <p className="hint">{s.missionsLockedNote}</p>}
 
         <ul className="journey-lines">
           <li>{s.journeyVisited(journey.visited.length)}</li>

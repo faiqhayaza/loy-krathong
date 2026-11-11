@@ -202,6 +202,43 @@ export default function Page() {
   useEffect(() => {
     setShowIdentityGate(!getIdentity());
   }, []);
+  // Browse-first (November audit): the gate is an overlay over the
+  // live site now, not the whole first page — the hero shows behind
+  // it, and "Look around first" dismisses it for this session only.
+  // Browsing stays read-only: floating and reacting still need an
+  // identity, and open the gate when tried. This supersedes Faiq's
+  // 2026-11-07 no-guest-entry decision, by his 2026-11-11 approval
+  // of the audit fix; the gate itself is unchanged.
+  const [gateSkipped, setGateSkipped] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return sessionStorage.getItem('loy:gate-skipped') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [gateOpen, setGateOpen] = useState(false);
+  const [gateMode, setGateMode] = useState<'signup' | 'signin'>('signup');
+  // null (undecided) still shows the gate, so the first paint agrees
+  // with the server and there is no flash of the river.
+  const gateVisible = (showIdentityGate !== false && !gateSkipped) || gateOpen;
+  const gatePassed = showIdentityGate === false || gateSkipped;
+  const pageWrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = pageWrapRef.current;
+    if (!el) return;
+    if (gateVisible) el.setAttribute('inert', '');
+    else el.removeAttribute('inert');
+  }, [gateVisible]);
+  function closeGate() {
+    setGateOpen(false);
+    setShowIdentityGate(false);
+    void fest.refresh();
+  }
+  function openGate(mode: 'signup' | 'signin') {
+    setGateMode(mode);
+    setGateOpen(true);
+  }
   // (Chunk B fix — pre-existing: the Builder stores `loy:my-wish` as
   // a raw id, not JSON, so JSON.parse throws on a bare uuid and this
   // was always null on a return visit, which hid the "Your krathong"
@@ -263,9 +300,9 @@ export default function Page() {
   // day, after the identity gate has passed. The dialog itself records
   // the day when it closes.
   useEffect(() => {
-    if (showIdentityGate !== false) return;
+    if (!gatePassed) return;
     if (loadWelcomeDay() !== bangkokDay()) setShowWelcome(true);
-  }, [showIdentityGate]);
+  }, [gatePassed]);
 
   // Tonight's secret: the glimmer anchor over the river shows while a
   // night is open and that night's secret is still unfound. Before the
@@ -480,32 +517,47 @@ export default function Page() {
     setPinned((p) => (p && p.id === id ? { ...p, reactions: counts } : p));
   }
 
+  // Browsing is read-only: every reaction, pinned wish or wall
+  // card, needs an identity — a visitor who skipped the gate is
+  // asked to sign in first instead of reacting anonymously.
+  async function reactGuarded(wishId: string, reaction: ReactionId) {
+    if (!getIdentity()) {
+      openGate('signup');
+      return null;
+    }
+    return toggleReaction(wishId, reaction);
+  }
   async function reactPinned(wish: Wish, reaction: ReactionId) {
-    const counts = await toggleReaction(wish.id, reaction);
+    const counts = await reactGuarded(wish.id, reaction);
     if (counts) updateWishReactions(wish.id, counts);
   }
 
-  // The gate is the whole first page: while it is up (or undecided),
-  // the site is not rendered at all — no hero, no passport, no river,
-  // no wall — and there is no way past it except signing up or signing in.
   // E1: once the visitor passes the gate, refresh the festival state
   // at once — the hook's 30 s poll would otherwise take up to 30 s to
   // learn the visitor's ID, and the one-time migration (which runs off
-  // the first live state) would wait with it.
-  if (showIdentityGate !== false) {
-    return (
-      <IdentityDialog
-        lang={lang}
-        onDone={() => {
-          setShowIdentityGate(false);
-          void fest.refresh();
-        }}
-      />
-    );
-  }
-
+  // the first live state) would wait with it. (closeGate does this;
+  // see the overlay below.)
   return (
     <>
+      {gateVisible && (
+        <div className="id-gate-overlay" role="dialog" aria-modal="true" aria-label={s.festivalName}>
+          <IdentityDialog
+            lang={lang}
+            initialMode={gateMode}
+            onSkip={() => {
+              try {
+                sessionStorage.setItem('loy:gate-skipped', '1');
+              } catch {
+                // session-only: a reload shows the gate again
+              }
+              setGateSkipped(true);
+              setGateOpen(false);
+            }}
+            onDone={() => closeGate()}
+          />
+        </div>
+      )}
+      <div ref={pageWrapRef} className={gateVisible ? 'gate-dimmed' : undefined} aria-hidden={gateVisible || undefined}>
       <header className="topbar">
         <a className="brand" href="#top">
           <span className="brand-mark" aria-hidden="true">🪷</span>
@@ -520,6 +572,9 @@ export default function Page() {
           <a href="#float">{s.navFloat}</a>
           <a href="#wishes">{s.navWishes}</a>
           <span className="top-controls">
+            <button type="button" className="key-nav" onClick={() => openGate('signin')}>
+              {s.haveKeyNav}
+            </button>
             <span className="lang-toggle" role="group" aria-label="Language / ภาษา">
               <button type="button" aria-pressed={lang === 'en'} onClick={() => switchLang('en')}>
                 EN
@@ -541,7 +596,7 @@ export default function Page() {
         {cal.phase === 'before' && (
           <div className="phase-banner" role="status">
             <strong>🌙 {s.phaseBeforeTitle}</strong>
-            <span>{s.phaseCountdown(opening.days, opening.hours)}</span>
+            <span suppressHydrationWarning>{s.phaseCountdown(opening.days, opening.hours)}</span>
           </div>
         )}
         {cal.phase === 'opening' && (
@@ -594,10 +649,19 @@ export default function Page() {
       <section className="hero" id="top">
         <SkyCanvas />
         <div className="hero-copy">
-          <span className="eyebrow">Loy Krathong · 24 November 2026</span>
+          <span className="eyebrow">{lang === 'th' ? s.festivalDate : 'Loy Krathong · 24 November 2026'}</span>
           <h1>
-            Seven Nights of Wishes
-            <span className="th" lang="th">เจ็ดค่ำคืนแห่งคำอธิษฐาน</span>
+            {lang === 'th' ? (
+              <>
+                เจ็ดค่ำคืนแห่งคำอธิษฐาน
+                <span className="th" lang="en">Seven Nights of Wishes</span>
+              </>
+            ) : (
+              <>
+                Seven Nights of Wishes
+                <span className="th" lang="th">เจ็ดค่ำคืนแห่งคำอธิษฐาน</span>
+              </>
+            )}
           </h1>
           <p className="lede">{s.heroIntro}</p>
           <div className="countdown" aria-live="off">
@@ -605,10 +669,10 @@ export default function Page() {
               <span className="cd-note">{s.countdownTonight}</span>
             ) : (
               <>
-                <span className="cd-cell"><span className="cd-num">{cd.days}</span><br /><span className="cd-lab">{s.countdownDays}</span></span>
-                <span className="cd-cell"><span className="cd-num">{cd.hours}</span><br /><span className="cd-lab">{s.countdownHours}</span></span>
-                <span className="cd-cell"><span className="cd-num">{cd.mins}</span><br /><span className="cd-lab">{s.countdownMins}</span></span>
-                <span className="cd-cell"><span className="cd-num">{cd.secs}</span><br /><span className="cd-lab">{s.countdownSecs}</span></span>
+                <span className="cd-cell"><span className="cd-num" suppressHydrationWarning>{cd.days}</span><br /><span className="cd-lab">{s.countdownDays}</span></span>
+                <span className="cd-cell"><span className="cd-num" suppressHydrationWarning>{cd.hours}</span><br /><span className="cd-lab">{s.countdownHours}</span></span>
+                <span className="cd-cell"><span className="cd-num" suppressHydrationWarning>{cd.mins}</span><br /><span className="cd-lab">{s.countdownMins}</span></span>
+                <span className="cd-cell"><span className="cd-num" suppressHydrationWarning>{cd.secs}</span><br /><span className="cd-lab">{s.countdownSecs}</span></span>
                 <span className="cd-note">{s.countdownLabel}</span>
               </>
             )}
@@ -656,6 +720,19 @@ export default function Page() {
             </span>
           </div>
           <p className="section-intro">{s.riverHint}</p>
+          <p className="fireworks-note">
+            <span>{s.fireworksNote}</span>
+            <button
+              type="button"
+              className="btn small ghost"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.dispatchEvent(new Event('loy:finale-show'));
+              }}
+            >
+              {s.fireworksPreview}
+            </button>
+          </p>
         </div>
         <div className="river-wrap" ref={riverRef}>
           <RiverCanvas
@@ -754,7 +831,7 @@ export default function Page() {
           </div>
           <p className="section-intro">{s.builderIntro}</p>
           <div className="float-grid">
-            <Builder lang={lang} onFloated={handleFloated} />
+            <Builder lang={lang} onFloated={handleFloated} onNeedIdentity={() => openGate('signup')} />
             <div className="float-rail">
               {/* Chunk A side panel: tonight's missions + the milestone card. */}
               <MissionsPanel lang={lang} cal={cal} />
@@ -863,12 +940,16 @@ export default function Page() {
             loading={loading}
             myWishId={myWishId}
             reacted={reacted}
-            onReact={toggleReaction}
+            onReact={reactGuarded}
             onReacted={updateWishReactions}
             hiddenIds={hiddenIds}
             onHide={hideWishOnDevice}
             onUnhide={unhideWishOnDevice}
             onBless={(wishId) => {
+              if (!getIdentity()) {
+                openGate('signup');
+                return;
+              }
               setBlessTarget(wishId);
               setSpecialDialog('bless');
             }}
@@ -934,6 +1015,7 @@ export default function Page() {
         {showJourney && (
           <JourneyCard lang={lang} cal={cal} journey={journeyFor(cal)} onClose={() => setShowJourney(false)} />
         )}
+      </div>
       </div>
     </>
   );

@@ -168,6 +168,7 @@ export function MilestoneCard({ lang, cal, day }: { lang: Lang; cal: FestivalCal
         ))}
       </div>
       <p className="milestone-count">{s.riverLightCount(milestone.riverLight, milestone.target)}</p>
+      {cal.phase === 'before' && <p className="hint">{s.missionsLockedNote}</p>}
       {stage >= 4 ? (
         <p className="milestone-done" role="status">
           {s.milestoneDone}

@@ -147,23 +147,26 @@ button, input, textarea { font: inherit; color: inherit; }
 /* Hero — full-bleed sky (Designer C): no box, no border, no radius.
    The hero IS the river's sky — it runs edge to edge and the river
    follows directly below it, so the night is one continuous scene.
+   The copy is in flow (the canvas is absolute behind it) and the
+   hero grows with it — the old fixed 560/640px canvas with
+   overflow:hidden clipped a longer Thai lede (November audit).
    It is a direct child of <body>, so it spans the layout viewport
    by structure (no 100vw breakout — 100vw includes the classic
    scrollbar's width and overflowed the page). */
 .hero {
   position: relative; overflow: hidden;
 }
-.hero canvas { display: block; width: 100%; height: 560px; }
-@media (min-width: 960px) { .hero canvas { height: 640px; } }
+.hero canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .hero-copy {
-  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end;
+  position: relative; display: flex; flex-direction: column; justify-content: flex-end;
+  min-height: 560px;
   padding: 24px 20px; gap: 10px;
   background: linear-gradient(180deg, rgba(7, 10, 31, 0.05) 40%, rgba(7, 10, 31, 0.82) 88%);
   pointer-events: none;
 }
 /* The copy sits in the centred column even though the hero is
    full-bleed, so the text lines up with every section below it. */
-@media (min-width: 960px) { .hero-copy { padding-left: max(24px, calc(50vw - 566px)); padding-right: max(24px, calc(50vw - 566px)); } }
+@media (min-width: 960px) { .hero-copy { min-height: 640px; padding-left: max(24px, calc(50vw - 566px)); padding-right: max(24px, calc(50vw - 566px)); } }
 .hero-copy > * { pointer-events: auto; }
 .eyebrow {
   font-family: var(--display); font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
@@ -286,9 +289,10 @@ button, input, textarea { font: inherit; color: inherit; }
    50% of the photo width) centred in the frame at desktop and mobile;
    the panel is wider (relative) than the 16:9 photo, so the width
    constrains and the photo is cropped top and bottom — object-position
-   50% 40% shifts the crop window up so Wat Arun's spire tip (19.7%
-   of the photo height) stays in frame at every viewport the site
-   serves, with the waterline near the lower quarter. The taller wrap
+   50% 28% keeps the crop window high, so Wat Arun's spire tip (19.7%
+   of the photo height) sits lower in the frame with sky above it
+   instead of slipping behind the sticky header at every viewport
+   the site serves, with the waterline near the lower quarter. The taller wrap
    (92vh) keeps the panel close to the photo's 16:9, so the crop is
    shallow at desktop and the photo's waterline sits near the
    animated waterline (RIVER_FRAC in RiverCanvas.tsx). (2) The WebGL water
@@ -303,8 +307,11 @@ button, input, textarea { font: inherit; color: inherit; }
 .river-scene { position: absolute; inset: 0; }
 .river-scene .river-backdrop {
   position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0;
-  object-fit: cover; object-position: 50% 40%; pointer-events: none;
+  object-fit: cover; object-position: 50% 28%; pointer-events: none;
   user-select: none;
+  /* A touch more contrast and warmth, so the floodlit temple reads
+     sharper against the night instead of soft and grey. */
+  filter: contrast(1.05) saturate(1.07);
 }
 .river-scene canvas.river-water {
   position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1;
@@ -621,6 +628,32 @@ button, input, textarea { font: inherit; color: inherit; }
   text-decoration: underline; text-underline-offset: 3px;
 }
 @media (max-width: 480px) { .id-key { font-size: 28px; letter-spacing: 0.1em; } }
+
+/* The gate as an overlay (November audit): the hero and river show
+   behind it, dimmed and inert, instead of a blank first page. The
+   overlay's own backdrop is translucent so the festival is visible
+   through it. */
+.id-gate-overlay {
+  position: fixed; inset: 0; z-index: 70;
+  background: linear-gradient(180deg, rgba(4, 6, 20, 0.45), rgba(4, 6, 20, 0.78));
+  backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px; overflow-y: auto;
+}
+.id-gate-modal { min-height: 0; background: none; padding: 0; display: block; }
+.gate-dimmed { filter: brightness(0.55); pointer-events: none; }
+/* Fireworks note in the river head: the real show time, and a
+   visible preview button — the show used to be a hidden 5-click
+   easter egg with no schedule anywhere on the page. */
+.fireworks-note { margin-top: 10px; color: #cfc8e8; font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* "I have a key" in the topbar: the way back for a returning visitor
+   once the gate can be skipped. */
+.key-nav {
+  background: none; border: 1px solid var(--line-soft); border-radius: 999px;
+  color: var(--gold-soft); font: inherit; font-size: 13px; font-weight: 600;
+  padding: 7px 12px; cursor: pointer; white-space: nowrap;
+}
+.key-nav:hover { border-color: var(--line); }
 
 /* --- Chunk B: the seven specials ---------------------------------------- */
 

@@ -14,6 +14,7 @@
 
 import type { FestivalCalendar } from './festival';
 import { isOpenDay } from './festival';
+import { bangkokDay } from './bangkok';
 import { eventsFor } from './events';
 
 export type SpecialKind = 'float' | 'quiz' | 'blessing' | 'candle' | 'gratitude' | 'share' | 'finale';
@@ -69,11 +70,25 @@ export function specialOpen(cal: FestivalCalendar, kind: SpecialKind): boolean {
   return isOpenDay(cal, day);
 }
 
-/** True when this device has evidence for the special (any night). */
-export function specialDone(kind: SpecialKind): boolean {
+/**
+ * True when this device has evidence for the special on its own night.
+ * The old check counted an event from ANY night, so a test float from
+ * before the festival made Night 1 read "Done ✓" while its missions
+ * correctly read Locked (November audit) — the missions only count
+ * same-day evidence. A preview (?night=N, dev-only) counts evidence
+ * recorded today for that night, so preview checks still work.
+ */
+export function specialDone(kind: SpecialKind, cal?: FestivalCalendar): boolean {
   const kinds = SPECIAL_EVIDENCE[kind];
   const events = eventsFor();
-  return events.some((e) => kinds.includes(e.kind));
+  if (!cal) return events.some((e) => kinds.includes(e.kind));
+  const day = cal.dates[SPECIAL_DAY[kind] - 1];
+  const preview = previewNight();
+  return events.some(
+    (e) =>
+      kinds.includes(e.kind) &&
+      (e.day === day || (preview === SPECIAL_DAY[kind] && e.day === bangkokDay())),
+  );
 }
 
 // ---- Server side -----------------------------------------------------------

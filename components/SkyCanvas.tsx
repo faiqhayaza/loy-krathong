@@ -107,45 +107,74 @@ export default function SkyCanvas() {
     }
 
     function drawTemple() {
-      // A low skyline: chedi spires and temple roofs along the horizon.
+      // Wat Arun on the horizon: one tall stepped prang at centre,
+      // two smaller prangs flanking it, and multi-tier roofs with
+      // upturned eaves — a temple skyline, not a row of triangles
+      // (November audit: the old spires read as pyramids/tents).
       const base = h * 0.86;
+      // low gold glow behind the temple, so the silhouette reads
+      // against the sky instead of as a black cut-out.
+      const glow = ctx!.createRadialGradient(w * 0.5, base, 4, w * 0.5, base, w * 0.42);
+      glow.addColorStop(0, 'rgba(246, 211, 107, 0.14)');
+      glow.addColorStop(1, 'rgba(246, 211, 107, 0)');
+      ctx!.fillStyle = glow;
+      ctx!.fillRect(0, 0, w, h);
       ctx!.fillStyle = '#05071a';
-      ctx!.beginPath();
-      ctx!.moveTo(0, h);
-      ctx!.lineTo(0, base + 6);
-      // chedi spire
-      ctx!.lineTo(w * 0.06, base + 6);
-      ctx!.lineTo(w * 0.075, base - 34);
-      ctx!.lineTo(w * 0.082, base - 52);
-      ctx!.lineTo(w * 0.089, base - 34);
-      ctx!.lineTo(w * 0.104, base + 6);
-      // temple roof (multi-tier)
-      ctx!.lineTo(w * 0.16, base + 6);
-      ctx!.lineTo(w * 0.17, base - 12);
-      ctx!.lineTo(w * 0.19, base - 12);
-      ctx!.lineTo(w * 0.20, base - 26);
-      ctx!.lineTo(w * 0.22, base - 26);
-      ctx!.lineTo(w * 0.23, base - 12);
-      ctx!.lineTo(w * 0.26, base - 12);
-      ctx!.lineTo(w * 0.27, base + 6);
-      // low roofs
-      ctx!.lineTo(w * 0.55, base + 6);
-      ctx!.lineTo(w * 0.56, base - 8);
-      ctx!.lineTo(w * 0.62, base - 8);
-      ctx!.lineTo(w * 0.63, base + 6);
-      // second chedi
-      ctx!.lineTo(w * 0.78, base + 6);
-      ctx!.lineTo(w * 0.795, base - 26);
-      ctx!.lineTo(w * 0.802, base - 40);
-      ctx!.lineTo(w * 0.809, base - 26);
-      ctx!.lineTo(w * 0.824, base + 6);
-      ctx!.lineTo(w, base + 6);
-      ctx!.lineTo(w, h);
-      ctx!.closePath();
-      ctx!.fill();
+      // the ground the temple stands on
+      ctx!.fillRect(0, base + 6, w, h - base - 6);
+      // a stepped prang: stacked trapezoids narrowing to a slim
+      // spire with a lotus-bud knob, like Wat Arun's central prang.
+      function prang(cx: number, bw: number, top: number) {
+        const tiers = 5;
+        const bh = base + 6 - top;
+        for (let i = 0; i < tiers; i++) {
+          const y0 = base + 6 - (bh * i) / tiers;
+          const y1 = base + 6 - (bh * (i + 1)) / tiers;
+          const w0 = bw * (1 - i * 0.14);
+          const w1 = bw * (1 - (i + 1) * 0.14);
+          ctx!.beginPath();
+          ctx!.moveTo(cx - w0 / 2, y0);
+          ctx!.lineTo(cx - w1 / 2, y1);
+          ctx!.lineTo(cx + w1 / 2, y1);
+          ctx!.lineTo(cx + w0 / 2, y0);
+          ctx!.closePath();
+          ctx!.fill();
+        }
+        ctx!.beginPath();
+        ctx!.moveTo(cx - 3, top);
+        ctx!.lineTo(cx, top - 16);
+        ctx!.lineTo(cx + 3, top);
+        ctx!.closePath();
+        ctx!.fill();
+        ctx!.beginPath();
+        ctx!.arc(cx, top - 18, 2.5, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+      // a two-tier roof with flicked-up eave corners
+      function roof(x0: number, x1: number, yTop: number) {
+        for (const [ty, th] of [[yTop, 10], [yTop + 13, 8]] as const) {
+          ctx!.beginPath();
+          ctx!.moveTo(x0, ty + th);
+          ctx!.lineTo(x0 + 5, ty);
+          ctx!.lineTo(x1 - 5, ty);
+          ctx!.lineTo(x1, ty + th);
+          ctx!.lineTo(x1 - 7, ty + th - 3);
+          ctx!.lineTo(x0 + 7, ty + th - 3);
+          ctx!.closePath();
+          ctx!.fill();
+        }
+        // posts under the roof
+        ctx!.fillRect(x0 + 6, yTop + 21, 3, base + 6 - (yTop + 21));
+        ctx!.fillRect(x1 - 9, yTop + 21, 3, base + 6 - (yTop + 21));
+      }
+      prang(w * 0.5, w * 0.085, base - 96);
+      prang(w * 0.36, w * 0.045, base - 56);
+      prang(w * 0.64, w * 0.045, base - 56);
+      roof(w * 0.07, w * 0.24, base - 30);
+      roof(w * 0.76, w * 0.93, base - 30);
       // a few lit windows
       ctx!.fillStyle = 'rgba(246, 211, 107, 0.75)';
-      for (const fx of [0.175, 0.205, 0.585, 0.605]) {
+      for (const fx of [0.1, 0.14, 0.21, 0.79, 0.83, 0.9]) {
         ctx!.fillRect(w * fx, base - 4, 3, 4);
       }
     }
@@ -155,8 +184,8 @@ export default function SkyCanvas() {
       const swayX = Math.sin(t / 2400 + l.sway) * 8;
       const x = l.x + swayX;
       const y = l.y;
-      const glow = ctx!.createRadialGradient(x, y, 2, x, y, 42 * s);
-      glow.addColorStop(0, `hsla(${l.hue}, 90%, 65%, 0.5)`);
+      const glow = ctx!.createRadialGradient(x, y, 2, x, y, 30 * s);
+      glow.addColorStop(0, `hsla(${l.hue}, 90%, 65%, 0.38)`);
       glow.addColorStop(1, `hsla(${l.hue}, 90%, 65%, 0)`);
       ctx!.fillStyle = glow;
       ctx!.beginPath();
@@ -179,10 +208,35 @@ export default function SkyCanvas() {
       ctx!.lineTo(x - 11 * s, y - 2 * s);
       ctx!.closePath();
       ctx!.fill();
-      // flame
+      // rim: a dark band under the paper body, so the lantern reads as
+      // a paper lamp with a basket, not a soft blob; and a rib down the
+      // paper, so the body has shape instead of one flat fill.
+      ctx!.fillStyle = `hsl(${l.hue}, 60%, 32%)`;
+      ctx!.beginPath();
+      ctx!.moveTo(x - 9 * s, y + 12 * s);
+      ctx!.lineTo(x + 9 * s, y + 12 * s);
+      ctx!.lineTo(x + 7 * s, y + 17 * s);
+      ctx!.lineTo(x - 7 * s, y + 17 * s);
+      ctx!.closePath();
+      ctx!.fill();
+      ctx!.strokeStyle = 'rgba(0, 0, 0, 0.10)';
+      ctx!.lineWidth = 1;
+      ctx!.beginPath();
+      ctx!.moveTo(x, y - 18 * s);
+      ctx!.lineTo(x, y + 11 * s);
+      ctx!.stroke();
+      // flame BELOW the body, with its own glow — not a pale droplet
+      // inside the paper (November audit).
+      const fl = ctx!.createRadialGradient(x, y + 21 * s, 1, x, y + 21 * s, 10 * s);
+      fl.addColorStop(0, 'rgba(255, 243, 196, 0.95)');
+      fl.addColorStop(1, 'rgba(255, 190, 90, 0)');
+      ctx!.fillStyle = fl;
+      ctx!.beginPath();
+      ctx!.arc(x, y + 21 * s, 10 * s, 0, Math.PI * 2);
+      ctx!.fill();
       ctx!.fillStyle = '#fff3c4';
       ctx!.beginPath();
-      ctx!.ellipse(x, y + 2 * s, 3.4 * s, 5 * s, 0, 0, Math.PI * 2);
+      ctx!.ellipse(x, y + 21 * s, 2.6 * s, 4 * s, 0, 0, Math.PI * 2);
       ctx!.fill();
     }
 
@@ -223,16 +277,21 @@ export default function SkyCanvas() {
       ctx!.beginPath();
       ctx!.arc(mx, my, mr, 0, Math.PI * 2);
       ctx!.fill();
-      // craters
-      ctx!.fillStyle = 'rgba(190, 170, 120, 0.35)';
+      // craters, kept faint so they read as shading, not pasted dots
+      ctx!.fillStyle = 'rgba(190, 170, 120, 0.2)';
       for (const [cx, cy, cr] of [[-0.3, 0.1, 0.16], [0.25, -0.25, 0.12], [0.1, 0.35, 0.09]] as const) {
         ctx!.beginPath();
         ctx!.arc(mx + cx * mr, my + cy * mr, cr * mr, 0, Math.PI * 2);
         ctx!.fill();
       }
-
-      // lanterns
-      for (const l of lanterns) drawLantern(l, t);
+      // faint grain across the disc, so the moon carries texture
+      // instead of reading as one flat pale disc.
+      ctx!.fillStyle = 'rgba(190, 170, 120, 0.10)';
+      for (const [gx, gy, gr] of [[-0.45, -0.3, 0.05], [-0.1, -0.5, 0.04], [0.4, -0.1, 0.06], [-0.35, 0.45, 0.05], [0.15, 0.55, 0.04], [0.5, 0.35, 0.05], [0.05, -0.05, 0.07], [-0.55, 0.15, 0.04], [0.3, 0.5, 0.03], [-0.2, 0.2, 0.05], [0.55, -0.35, 0.04], [0.0, 0.3, 0.03]] as const) {
+        ctx!.beginPath();
+        ctx!.arc(mx + gx * mr, my + gy * mr, gr * mr, 0, Math.PI * 2);
+        ctx!.fill();
+      }
 
       // meteors
       for (const m of meteors) {
@@ -259,6 +318,10 @@ export default function SkyCanvas() {
       }
 
       drawTemple();
+
+      // lanterns — after the temple, so none is ever half-hidden
+      // behind the silhouette (November audit: one was clipped by it).
+      for (const l of lanterns) drawLantern(l, t);
 
       // water shimmer at the very bottom
       const water = ctx!.createLinearGradient(0, h * 0.9, 0, h);

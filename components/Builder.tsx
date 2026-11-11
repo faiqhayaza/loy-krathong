@@ -40,6 +40,7 @@ import { candleFlameToday } from '@/lib/candle';
 import { replyLanguage, templateBlessing } from '@/lib/blessing';
 import { CRISIS_MESSAGE, isCrisis } from '@/lib/crisis';
 import { getIdentity, getVisitorId } from '@/lib/identity';
+import { audio } from '@/lib/audio';
 import { recordEvent } from '@/lib/events';
 import { t } from '@/lib/i18n';
 import { loadKrathongChoice, saveKrathongChoice } from '@/lib/krathong';
@@ -51,6 +52,8 @@ import { downloadKeepsake } from './Keepsake';
 interface Props {
   lang: Lang;
   onFloated: (wish: Wish) => void;
+  /** Browse-first: no identity yet — open the gate instead of floating. */
+  onNeedIdentity?: () => void;
 }
 
 const MAX_STAMPS = 10;
@@ -84,7 +87,7 @@ function formatStampDate(day: string, lang: Lang): string {
   }
 }
 
-export default function Builder({ lang, onFloated }: Props) {
+export default function Builder({ lang, onFloated, onNeedIdentity }: Props) {
   const s = t(lang);
   const [name, setName] = useState('');
   const [wish, setWish] = useState('');
@@ -136,6 +139,7 @@ export default function Builder({ lang, onFloated }: Props) {
   });
   const [stamps, setStamps] = useState<string[]>(() => loadDailyStamps());
   const [celebrate, setCelebrate] = useState(false);
+  const [kalimbaOn, setKalimbaOn] = useState(() => audio.isEffectivelyOn());
 
   // Keep the krathong choices on this device, so a return visit finds
   // the same flower, boat and design picked. The flame saved here is
@@ -296,11 +300,23 @@ export default function Builder({ lang, onFloated }: Props) {
     setError('');
     const text = wish.trim();
     if (!text) {
+      submittingRef.current = false;
       setError(s.errorNeedWish);
       return;
     }
     if (blocked) {
+      submittingRef.current = false;
       setError(s.errorRejected);
+      return;
+    }
+    // Browse-first: floating needs a nickname and key, so a visitor
+    // who skipped the gate is asked to sign in instead of floating
+    // anonymously. (Also fixes the early returns above, which used to
+    // leave submittingRef set and the form dead until a reload.)
+    if (!getIdentity()) {
+      submittingRef.current = false;
+      setError(s.errorNeedIdentity);
+      onNeedIdentity?.();
       return;
     }
     setSubmitting(true);
@@ -486,6 +502,18 @@ export default function Builder({ lang, onFloated }: Props) {
           {s.keepsake}
         </button>
         {keepsakeDone && <p className="hint" role="status">{s.keepsakeSaved}</p>}
+        {!kalimbaOn && (
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => {
+              audio.setEnabled(true);
+              setKalimbaOn(true);
+            }}
+          >
+            🎵 {s.listenKalimba}
+          </button>
+        )}
         {ownRow(floated.id)}
         {removeError && <p className="err" role="alert">{removeError}</p>}
       </div>

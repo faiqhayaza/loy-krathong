@@ -15,9 +15,10 @@
 // photo's own temple replaces the WatArunSvg overlay (a real illuminated
 // Wat Arun reads better than the drawing at desktop size, and the SVG
 // would have put a second temple in the scene) — the SVG file stays in
-// the tree for the record. The photo's waterline sits at 67% of the
-// panel, so the sky is the top two-thirds and the water the bottom third;
-// the boats float in that third, in four rows.
+// the tree for the record. The photo's waterline sits at 72% of the
+// panel, so the sky is the top ~70% and the water the bottom ~28%;
+// the boats float in that water, in three rows, at about twice the
+// size they used to be — big enough to read as krathongs, not dots.
 //
 // Over the photo's water runs the attached scene's WebGL water shader
 // (bangkok-river-animated.html): fbm current lanes, a warm temple
@@ -135,21 +136,21 @@ interface Props {
   milestoneStage?: number;
 }
 
-const ROWS = 4;
+const ROWS = 3;
 // The photograph's waterline: measured from the pixels of the shipped
 // webp, the warm temple/bank ends at ~0.70 of the photo height, the
 // water surface (with the temple's reflection columns) begins at
 // ~0.72-0.75 and the open water at ~0.82. The animated waterline sits
-// at 0.78 — just below the photo's displayed waterline at the
-// viewports the site serves (the taller wrap keeps the panel close to
-// the photo's 16:9, so the photo is barely cropped at desktop and
-// height-constrained on mobile, and the displayed waterline lands at
-// ~0.75-0.78), so the animated water starts in the water, never over
-// the land. The earlier 0.67 put the waterline inside the temple and
-// flooded the bank. At very wide viewports the photo's water is
-// cropped out of frame, so a residual flood band remains there —
-// the waterline cannot track a waterline the photo no longer shows.
-const RIVER_FRAC = 0.78;
+// at 0.72 — inside the photo's own water, so the shader overlaps the
+// photograph's reflection columns instead of starting below them, and
+// the shader's top edge is feathered (topFade in the fragment shader)
+// so no hard seam survives where the animated water begins. The
+// earlier 0.78 sat below the photo's waterline and left a strip of
+// still photo water above the moving water — the seam the November
+// audit caught. At very wide viewports the photo's water is cropped
+// out of frame, so a residual flood band remains there — the
+// waterline cannot track a waterline the photo no longer shows.
+const RIVER_FRAC = 0.72;
 // Moon and temple, as fractions of panel width/height — measured from
 // the photograph's pixels (temple centre 0.50, its reflection column
 // 0.59, spire top 0.20; the photo has no moon, so the drawn moon keeps
@@ -223,6 +224,10 @@ function createWaterRenderer(canvas: HTMLCanvasElement): { render: (o: WaterRend
         float sy=1.0-v_uv.y;
         if(sy<u_top) discard;
         float d=clamp((sy-u_top)/(1.0-u_top),0.0,1.0);
+        // Feather the top edge: the shader fades in over the first 6%
+        // of the water instead of starting on a hard line, so the
+        // animated water melts into the photograph's water above it.
+        float topFade=smoothstep(0.0,0.06,d);
         float x=v_uv.x;
         float t=u_time;
         float current=.075+u_wind*.009+u_rain*.035;
@@ -269,7 +274,7 @@ function createWaterRenderer(canvas: HTMLCanvasElement): { render: (o: WaterRend
         col+=vec3(.15,.20,.19)*glint;
         float rainTexture=(n2-.5)*u_rain*(.025+.075*d);
         col+=vec3(.05,.09,.10)*rainTexture;
-        gl_FragColor=vec4(clamp(col,0.0,1.0)*u_blend,u_blend);
+        gl_FragColor=vec4(clamp(col,0.0,1.0)*u_blend*topFade,u_blend*topFade);
       }`;
   function compile(type: number, src: string): WebGLShader | null {
     const sh = gl!.createShader(type);
@@ -597,14 +602,14 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     }
 
     function rowY(row: number): number {
-      // Row 0 is the far bank (small, high), row 3 the near bank (large,
+      // Row 0 is the far bank (small, high), row 2 the near bank (large,
       // low). The rows pack into the water below the waterline, with a
-      // margin at the bottom so the nearest krathong (and its splash
-      // rings) never clips the panel edge.
-      return horizon() + 14 + (row * (h - horizon() - 58)) / (ROWS - 1);
+      // margin at the bottom so the nearest krathong, its name tag
+      // hanging below it, and its splash rings never clip the panel edge.
+      return horizon() + 14 + (row * (h - horizon() - 84)) / (ROWS - 1);
     }
     function rowScale(row: number): number {
-      return 0.62 + row * 0.22;
+      return 0.78 + row * 0.22;
     }
 
     // Clouds are pre-rendered once to offscreen canvases: layered
@@ -696,7 +701,9 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       }
       // Dark reeds and grass at the water's edge, kept clear of the
       // temple's centre (0.50w in the photograph) so they never crowd
-      // it. They grow in clusters with gaps between them — not a uniform
+      // it. Short and sparse since the November audit, when tall tufts
+      // at the seam read as stray grass. They grow in clusters with
+      // gaps between them — not a uniform
       // comb — and every blade has its own height, lean and thickness;
       // about a third carry a seed head, so they read as reeds, not
       // matchsticks. (The far bank itself is the photograph's shoreline
@@ -704,7 +711,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       tufts.length = 0;
       let clusters = 0;
       let guard = 0;
-      while (clusters < 4 && guard < 40) {
+      while (clusters < 2 && guard < 40) {
         guard += 1;
         const cx = Math.random() * w;
         if (cx > w * 0.45 && cx < w * 0.8) continue;
@@ -715,7 +722,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           const n = 3 + Math.floor(Math.random() * 4);
           for (let b = 0; b < n; b++) {
             blades.push({
-              h: 6 + Math.random() * 8,
+              h: 4 + Math.random() * 5,
               lean: (Math.random() - 0.5) * 12,
               w: 1.0 + Math.random() * 0.8,
               head: Math.random() < 0.35,
@@ -794,15 +801,20 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         // first draw frame (see drawKrathong).
         krathongImage(wish.boat, wish.flower, wish.flame, wish.design);
         if (!sprites.has(wish.id)) {
-          const row = i % ROWS;
           const fresh = wish.id === highlightRef.current;
+          // Rows favour the near bank when there are few wishes, so the
+          // first krathongs are the large ones; x spreads by the golden
+          // ratio, so two boats sit apart across the river instead of
+          // clustering left/centre (November audit).
+          const row = fresh ? ROWS - 1 : ROWS - 1 - (i % ROWS);
+          const slotX = 0.15 + 0.7 * ((i * 0.618034) % 1);
           sprites.set(wish.id, {
             id: wish.id,
             // New krathongs splash in at the near bank; the rest spread
             // out — inset from the panel edges, so a boat never spawns
             // half-clipped with its name tag cut off.
-            x: fresh ? w * (0.3 + Math.random() * 0.4) : w * (0.09 + Math.random() * 0.82),
-            row: fresh ? ROWS - 1 : row,
+            x: fresh ? w * (0.3 + Math.random() * 0.4) : w * slotX,
+            row,
             speed: 0.08 + Math.random() * 0.16,
             phase: Math.random() * Math.PI * 2,
             scale: rowScale(fresh ? ROWS - 1 : row),
@@ -897,10 +909,21 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     // tag is never cut by a prang. Clamped inside the canvas, so a boat
     // drifting in from an edge never has its tag cut off (the tag centre
     // follows the clamp, so the name stays inside the tag).
-    // tagRect measures where a tag would land (dy shifts it up, for the
-    // de-collision pass in draw()); drawNameTag draws it there. Ported
-    // from variant B's tagRect, extended in the draw() pass so a tag
-    // also steps up when it would cover another boat's sprite/flame.
+    // tagRect measures where a tag would land (dy shifts it down, for
+    // the de-collision pass in draw()); drawNameTag draws it there.
+    // Ported from variant B's tagRect, extended in the draw() pass so
+    // a tag also steps down when it would cover another boat's
+    // sprite/flame.
+    // The hull's bottom edge for a boat anchored at y with scale sc:
+    // the anchor is the hull centre (87/136 of the artwork), so the
+    // bottom sits (136-87)/136 of the boat height below it, plus the
+    // 7*sc the draw puts under the anchor. The name tag hangs from
+    // that edge — like the builder preview's gold name below the boat
+    // — instead of floating 25-40px above it (November audit).
+    function boatBottomY(y: number, sc: number): number {
+      const boatH = (110 * sc * KRATHONG_VIEWBOX.h) / KRATHONG_VIEWBOX.w;
+      return y + 7 * sc + ((KRATHONG_VIEWBOX.h - KRATHONG_HULL_CENTER_Y) / KRATHONG_VIEWBOX.h) * boatH;
+    }
     function tagRect(g: CanvasRenderingContext2D, wish: Wish, s: Sprite, y: number, sc: number, dy = 0) {
       const name = wish.name.trim() || (langRef.current === 'th' ? 'ใครคนหนึ่งในกรุงเทพฯ' : 'Someone in Bangkok');
       const font = `600 ${Math.round(12 * sc + 1)}px Prompt, Sarabun, sans-serif`;
@@ -909,7 +932,8 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       const tagW = tw + 16;
       const tagH = 20;
       const tagCx = Math.max(tagW / 2 + 6, Math.min(w - tagW / 2 - 6, s.x));
-      return { x: tagCx - tagW / 2, y: y - 52 * sc - tagH + dy, w: tagW, h: tagH, cx: tagCx, name };
+      const tagY = Math.min(boatBottomY(y, sc) + 6 + dy, h - tagH - 4);
+      return { x: tagCx - tagW / 2, y: tagY, w: tagW, h: tagH, cx: tagCx, name };
     }
     function drawNameTag(g: CanvasRenderingContext2D, wish: Wish, s: Sprite, y: number, sc: number, dy = 0, alpha = 1) {
       const r = tagRect(g, wish, s, y, sc, dy);
@@ -928,7 +952,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       g.strokeStyle = 'rgba(232, 179, 75, 0.55)';
       g.lineWidth = 1;
       g.stroke();
-      g.fillStyle = '#f7f1e3';
+      g.fillStyle = '#f6d36b';
       g.textAlign = 'center';
       g.textBaseline = 'middle';
       g.fillText(name, tagCx, tagY + tagH / 2 + 0.5);
@@ -949,7 +973,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // appears once loaded.
       const img = krathongImage(wish.boat, wish.flower, wish.flame, wish.design);
       if (!img.complete || img.naturalWidth === 0) return;
-      const w = 66 * sc;
+      const w = 110 * sc;
       const h = (w * KRATHONG_VIEWBOX.h) / KRATHONG_VIEWBOX.w;
       const left = s.x - w / 2;
       const top = y + 7 * sc - (KRATHONG_HULL_CENTER_Y / KRATHONG_VIEWBOX.h) * h;
@@ -967,19 +991,19 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           ctx!.strokeStyle = `rgba(246, 211, 107, ${(1 - p) * 0.5})`;
           ctx!.lineWidth = 1.5;
           ctx!.beginPath();
-          ctx!.ellipse(s.x, y + 8 * sc, 14 * sc + p * 46, 5 * sc + p * 12, 0, 0, Math.PI * 2);
+          ctx!.ellipse(s.x, y + 8 * sc, 24 * sc + p * 70, 8 * sc + p * 18, 0, 0, Math.PI * 2);
           ctx!.stroke();
         }
       }
 
       // flame glow — a stronger wind makes the flame dance harder
       const flick = 1 + (0.14 + wind * 0.1) * Math.sin(t / 170 + s.phase * 3);
-      const glow = ctx!.createRadialGradient(flameCx, flameCy, 1, flameCx, flameCy, 26 * sc);
+      const glow = ctx!.createRadialGradient(flameCx, flameCy, 1, flameCx, flameCy, 44 * sc);
       glow.addColorStop(0, fc + 'cc');
       glow.addColorStop(1, fc + '00');
       ctx!.fillStyle = glow;
       ctx!.beginPath();
-      ctx!.arc(flameCx, flameCy, 26 * sc, 0, Math.PI * 2);
+      ctx!.arc(flameCx, flameCy, 44 * sc, 0, Math.PI * 2);
       ctx!.fill();
 
       // the artwork itself: hull, candle, flowers, rim, veins, shimmer
@@ -1321,7 +1345,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           const bx = tf.x + (b - (tf.blades.length - 1) / 2) * 3;
           const tipX = bx + bl.lean + (b - (tf.blades.length - 1) / 2) * 2.4;
           const tipY = tf.y - bl.h;
-          ctx!.strokeStyle = 'rgba(18, 34, 40, 0.55)';
+          ctx!.strokeStyle = 'rgba(18, 34, 40, 0.4)';
           ctx!.lineWidth = bl.w;
           ctx!.beginPath();
           ctx!.moveTo(bx, tf.y + 2);
@@ -1329,7 +1353,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
           ctx!.stroke();
           if (bl.head) {
             // a cattail seed head on the tip
-            ctx!.fillStyle = 'rgba(18, 34, 40, 0.55)';
+            ctx!.fillStyle = 'rgba(18, 34, 40, 0.4)';
             ctx!.beginPath();
             ctx!.ellipse(tipX, tipY - 2, 1.8, 4.5, bl.lean * 0.03, 0, Math.PI * 2);
             ctx!.fill();
@@ -1497,9 +1521,10 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         // have their tags drawn on top of each other (one name half
         // hidden behind the other), and a tag could sit on another
         // boat's flame. A tag that would overlap one already placed,
-        // or another boat's sprite/flame box, steps UP by 28px, up to
-        // three times, so every name stays fully readable; up, never
-        // down, so a shifted tag can never cover its own boat's flame.
+        // or another boat's sprite/flame box, steps DOWN by 26px, up
+        // to three times, so every name stays fully readable; down,
+        // never up, now that tags hang below their boats — a shifted
+        // tag can never cover its own boat's flame.
         // (Ported from variant B, extended from tags-only to boats —
         // and strengthened: B's 24px/up-to-twice left a tag overlapping
         // in a live 6-boat cluster, where a stepped tag can land on
@@ -1509,8 +1534,8 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         // One exclusion box per boat: the leaf boat, candle and flame.
         const boatBoxes = [...sprites.values()].map((bs) => {
           const by = rowY(bs.row) + Math.sin(t / 1100 + bs.phase) * 3;
-          const hw = 34 * bs.scale + 6;
-          return { id: bs.id, x: bs.x - hw, y: by - 32 * bs.scale, w: hw * 2, h: 48 * bs.scale };
+          const hw = 55 * bs.scale + 6;
+          return { id: bs.id, x: bs.x - hw, y: by - 54 * bs.scale, w: hw * 2, h: 86 * bs.scale };
         });
         const placed: { x: number; y: number; w: number; h: number }[] = [];
         for (const s of ordered) {
@@ -1530,7 +1555,7 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
             const hitTag = placed.some((p) => overlaps(r, p));
             const hitBoat = boatBoxes.some((b) => b.id !== s.id && overlaps(r, b));
             if (!hitTag && !hitBoat) break;
-            dy -= 28;
+            dy += 26;
             r = tagRect(tagG, wish, s, ty, s.scale, dy);
           }
           placed.push(r);

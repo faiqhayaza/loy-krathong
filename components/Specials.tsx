@@ -38,7 +38,7 @@ export default function Specials({ lang, tick, onOpenDialog, onFloatScroll }: Pr
   const doneMap = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const d of DESTINATIONS) {
-      map.set(d.special.kind, specialDone(d.special.kind as SpecialKind));
+      map.set(d.special.kind, specialDone(d.special.kind as SpecialKind, cal));
     }
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps

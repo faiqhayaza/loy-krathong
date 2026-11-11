@@ -17,6 +17,12 @@
 // the visitor's progress back from the server is E1's job, so the
 // sign-in copy says so plainly instead of pretending.
 //
+// November audit (approved 2026-11-11): the gate is an overlay over
+// the live site now, with a "Look around first" skip — the earlier
+// no-guest-entry decision is superseded. Browsing is read-only:
+// floating and reacting still open this gate. The gate itself —
+// nickname + 10-digit key, no email, no password — is unchanged.
+//
 // Strings live here, not in lib/i18n.ts (D1 adds no keys there): the
 // gate is its own self-contained step. The /admin page keeps its own
 // password and is out of scope for the gate.
@@ -61,6 +67,8 @@ const STRINGS = {
     signinNote: 'Your key is stored on this device, so next time you come straight in. Signing in pulls your wishes, stamps and progress back from the river.',
     signinRateLimited: 'Too many tries. Wait a minute and try again.',
     nicknameFirst: 'Please enter a nickname first.',
+    skipBrowse: 'Look around first',
+  skipHint: 'Browse the river first. Sign in when you want to float.',
   },
   th: {
     title: 'เจ็ดค่ำคืนแห่งคำอธิษฐาน',
@@ -88,18 +96,25 @@ const STRINGS = {
     signinNote: 'กุญแจของคุณจะเก็บไว้บนอุปกรณ์นี้ ครั้งหน้าจะเข้าได้เลย การลงชื่อเข้าจะดึงคำอธิษฐาน ตราประทับ และความคืบหน้าของคุณกลับมาจากสายน้ำ',
     signinRateLimited: 'ลองหลายครั้งเกินไปแล้ว รอสักครู่แล้วลองอีกครั้ง',
     nicknameFirst: 'กรุณาใส่ชื่อเล่นก่อน',
+    skipBrowse: 'เดินชมก่อน',
+  skipHint: 'เดินชมสายน้ำก่อน ลงชื่อเข้าใช้ตอนอยากลอยกระทง',
   },
 } as const;
 
 export default function IdentityDialog({
   lang,
   onDone,
+  onSkip,
+  initialMode,
 }: {
   lang: Lang;
   onDone: (identity: VisitorIdentity) => void;
+  /** Overlay mode: show the browse-first skip. Absent = the old full-page gate. */
+  onSkip?: () => void;
+  initialMode?: 'signup' | 'signin';
 }) {
   const s = STRINGS[lang];
-  const [mode, setMode] = useState<'signup' | 'signin'>('signup');
+  const [mode, setMode] = useState<'signup' | 'signin'>(initialMode ?? 'signup');
   const [step, setStep] = useState<'form' | 'key'>('form');
   const [nickname, setNickname] = useState('');
   const [keyInput, setKeyInput] = useState('');
@@ -188,10 +203,12 @@ export default function IdentityDialog({
     }
   }
 
-  // The gate IS the first page (not a dialog over the site): while it is
-  // up, nothing else is rendered. No dismiss path exists.
+  // Overlay mode (November audit): the gate is a dialog over the live
+  // site, with a browse-first skip. Without onSkip it stays the old
+  // full-page gate — no dismiss path exists.
+  const Wrap = (onSkip ? 'div' : 'main') as 'div' | 'main';
   return (
-    <main className="id-gate" aria-labelledby="id-gate-title">
+    <Wrap className={onSkip ? 'id-gate id-gate-modal' : 'id-gate'} aria-labelledby="id-gate-title">
       <div className="id-card">
         <h1 id="id-gate-title">🪷 {s.title}</h1>
         <p className="id-sub">{mode === 'signup' && step === 'form' ? s.sub : mode === 'signin' ? s.signinBody : s.yourKeyTitle}</p>
@@ -227,6 +244,14 @@ export default function IdentityDialog({
             <button type="button" className="id-switch" onClick={() => { setError(null); setMode('signin'); }}>
               {s.haveKey}
             </button>
+            {onSkip && (
+              <>
+                <button type="button" className="id-switch" onClick={onSkip}>
+                  {s.skipBrowse}
+                </button>
+        <p className="id-hint">{s.skipHint}</p>
+              </>
+            )}
           </>
         )}
 
@@ -292,9 +317,14 @@ export default function IdentityDialog({
             >
               {s.newKey}
             </button>
+            {onSkip && (
+              <button type="button" className="id-switch" onClick={onSkip}>
+                {s.skipBrowse}
+              </button>
+            )}
           </>
         )}
       </div>
-    </main>
+    </Wrap>
   );
 }
