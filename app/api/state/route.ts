@@ -121,6 +121,20 @@ async function buildPayload(req: NextRequest): Promise<StatePayload> {
 }
 
 export async function GET(req: NextRequest) {
+  // GET used to be unthrottled while PATCH was limited to 5/min/IP.
+  // Visitor identity is a 10-digit numeric ID sent as a bearer header,
+  // so an unthrottled GET is an enumeration oracle in principle (9e9
+  // space makes blind brute force impractical, but there was no brake
+  // at all). 30/min/IP in its own 'state-get' bucket: the client polls
+  // every 30 s (2/min), so this is 15x headroom for one visitor and
+  // still stops a scanner. Checked before buildPayload so a throttled
+  // caller never pays for the full state build.
+  if (!(await checkRateLimit(clientIp(req), 'state-get', 30))) {
+    return NextResponse.json(
+      { error: 'rate_limited', message: 'Too many state checks at once. Give the river a moment.' },
+      { status: 429 },
+    );
+  }
   const payload = await buildPayload(req);
   // The ETag covers everything EXCEPT serverNow: the clock moves on
   // every request, so hashing it in would make the ETag change every
