@@ -78,6 +78,20 @@ export function usingRedis(): boolean {
   return getRedis() !== null;
 }
 
+// Where the last river read actually came from. `usingRedis()` only
+// proves the env vars are set — when Upstash is over its command quota
+// (or down), reads fall back to per-instance memory while `usingRedis()`
+// still says true. The public `storage` field in GET /api/wishes must
+// report what really served the read, or the storage watcher (see
+// scripts/storage-watch.mjs) cannot see the fallback engage.
+let lastWishesReadFrom: 'redis' | 'memory' | null = null;
+
+/** What really served the last river read — the truthful health signal. */
+export function storageStatus(): 'redis' | 'memory' {
+  if (!usingRedis()) return 'memory';
+  return lastWishesReadFrom ?? 'redis';
+}
+
 // ---- In-memory fallback -------------------------------------------------
 
 const memWishes: Wish[] = [];
@@ -109,9 +123,11 @@ async function readStoredWishes(): Promise<Wish[]> {
           // Skip a single corrupt entry rather than failing the whole river.
         }
       }
+      lastWishesReadFrom = 'redis';
       return wishes;
     } catch (err) {
       console.error('[loy] Redis read failed, falling back to memory:', err);
+      lastWishesReadFrom = 'memory';
     }
   }
   return [...memWishes];
@@ -192,7 +208,7 @@ const WISHES_CACHE_TTL_MS = 30_000;
 let wishesCache: {
   at: number;
   version: number;
-  payload: { wishes: Wish[]; count: number; totalReactions: number; storage: string };
+  payload: { wishes: Wish[]; count: number; totalReactions: number; storage: string; redisOk: boolean };
 } | null = null;
 
 /** The cached river payload for GET /api/wishes. */
@@ -201,6 +217,7 @@ export async function listWishesCached(): Promise<{
   count: number;
   totalReactions: number;
   storage: string;
+  redisOk: boolean;
 }> {
   const now = Date.now();
   // E5: the cache also keys on the river version — a moderation change
@@ -212,9 +229,14 @@ export async function listWishesCached(): Promise<{
   }
   const { wishes, totalReactions } = await listWishes();
   // `storage` is a first-hand health signal: "redis" proves wishes are
-  // shared through Upstash; "memory" means the env vars are missing and
-  // each server instance only remembers its own wishes.
-  const payload = { wishes, count: wishes.length, totalReactions, storage: usingRedis() ? 'redis' : 'memory' };
+  // shared through Upstash; "memory" means the river is running on a
+  // per-instance fallback. It reports what the read above actually hit
+  // (storageStatus), NOT just whether the env vars are set — when
+  // Upstash is over its quota the reads fail and the fallback engages,
+  // and this field is how the watcher notices. `redisOk` is the same
+  // signal as a boolean for the watcher script.
+  const storage = storageStatus();
+  const payload = { wishes, count: wishes.length, totalReactions, storage, redisOk: storage === 'redis' };
   wishesCache = { at: now, version: wishesVersion(), payload };
   return payload;
 }

@@ -1,0 +1,79 @@
+# Storage watcher — polls the live river every 5 minutes and pages on fallback.
+#
+# GET /api/wishes carries a public `storage` field. When Upstash is over
+# its quota (or down), the app fails open to a per-instance in-memory
+# store: POSTs still return 201, but wishes live only in one server
+# instance and vanish on recycle. This workflow is the only alert for
+# that. On failure it opens (or reuses) a GitHub issue labelled
+# `storage-alert` with the run link and the runbook section to follow.
+#
+# Cost of polling: GET /api/wishes is server-cached for 30 s, so the
+# watcher costs at most ~2 Redis reads a minute — noise against the
+# 500K/month free quota. It does NOT write anything to the store.
+
+name: storage-watch
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check river storage
+        id: check
+        continue-on-error: true
+        env:
+          SITE_URL: https://loykrathong.web.id
+        run: node scripts/storage-watch.mjs
+      - name: Open or update the storage alert issue
+        if: steps.check.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const label = 'storage-alert';
+            const title = "Storage fallback: river is on in-memory store";
+            const open = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+            });
+            const body = [
+              `The storage watcher saw \`storage != 'redis'\` on GET /api/wishes at ${new Date().toISOString()}.`,
+              '',
+              'Wishes posted while this lasts return 201 but live only in one server instance — other visitors never see them.',
+              '',
+              `Failed run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              'Follow RUNBOOK.md, section "River is on in-memory storage" (Upstash quota / new store / wait for the 1 Dec reset).',
+            ].join('\n');
+            if (open.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: open.data[0].number,
+                body: `Still failing at ${new Date().toISOString()} — ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: [label],
+              });
+            }
+      - name: Fail the run so the schedule shows red while the river is down
+        if: steps.check.outcome == 'failure'
+        run: exit 1
