@@ -21,6 +21,7 @@
 // A worry is never part of an event and is never read here.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { clientIp } from '@/lib/clientIp';
 import { EVENT_KINDS, isEventKind, type EventKind } from '@/lib/events';
 import { isValidRecoveryId } from '@/lib/identity';
 import { bangkokDay } from '@/lib/bangkok';
@@ -37,12 +38,6 @@ export const runtime = 'nodejs';
 
 /** Event kinds that earn rewards — blocked while rewards are paused (E4). */
 const REWARD_KINDS: EventKind[] = ['quiz', 'blessing', 'candle', 'gratitude', 'share', 'finale'];
-
-function clientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return req.headers.get('x-real-ip') ?? 'unknown';
-}
 
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>;

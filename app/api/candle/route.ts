@@ -26,6 +26,7 @@
 // A worry is never part of a candle and is never read here.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { clientIp } from '@/lib/clientIp';
 import { isKnownFlame } from '@/lib/data';
 import { isValidRecoveryId } from '@/lib/identity';
 import { calendar } from '@/lib/festival';
@@ -42,12 +43,6 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-function clientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return req.headers.get('x-real-ip') ?? 'unknown';
-}
 
 export async function GET() {
   return NextResponse.json({ candles: await getCandleCount() });

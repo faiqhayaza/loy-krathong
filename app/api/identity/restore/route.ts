@@ -19,17 +19,12 @@
 // (lib/identity.ts) and the server learns it on first contact.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { clientIp } from '@/lib/clientIp';
 import { isValidNickname, isValidRecoveryId } from '@/lib/identity';
 import { checkRateLimit, checkRestoreIdLimit, getVisitorState, visitorStateExists } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-function clientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return req.headers.get('x-real-ip') ?? 'unknown';
-}
 
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>;

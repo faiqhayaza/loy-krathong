@@ -13,18 +13,13 @@
 // POST, so a leaked token cannot be used to hammer the config.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { clientIp } from '@/lib/clientIp';
 import { validateConfigPatch } from '@/lib/config';
 import { appendAudit, checkRateLimit, getConfig, saveConfig } from '@/lib/store';
 import { requireAdmin } from '@/lib/adminAuth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-function clientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return req.headers.get('x-real-ip') ?? 'unknown';
-}
 
 export async function GET(req: NextRequest) {
   const denied = requireAdmin(req);

@@ -29,6 +29,7 @@
 // Rate-limited at 5/minute/IP in its own bucket (scope 'bless').
 
 import { NextRequest, NextResponse } from 'next/server';
+import { clientIp } from '@/lib/clientIp';
 import { isValidBlessingId } from '@/lib/blessings';
 import { isValidRecoveryId } from '@/lib/identity';
 import { calendar } from '@/lib/festival';
@@ -37,12 +38,6 @@ import { addBlessing, checkRateLimit, getBlessings, invalidateWishesCache, markS
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-function clientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return req.headers.get('x-real-ip') ?? 'unknown';
-}
 
 export async function GET(req: NextRequest) {
   const wishId = req.nextUrl.searchParams.get('wishId');

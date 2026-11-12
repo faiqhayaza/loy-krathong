@@ -17,18 +17,13 @@
 // A worry is never part of a migration payload and is never read here.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { clientIp } from '@/lib/clientIp';
 import { isValidRecoveryId } from '@/lib/identity';
 import { checkRateLimit, mergeVisitorState } from '@/lib/store';
 import { emptyVisitorState, type VisitorState } from '@/lib/festivalState';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-function clientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return req.headers.get('x-real-ip') ?? 'unknown';
-}
 
 export async function POST(req: NextRequest) {
   const visitorId = req.headers.get('x-visitor-id');

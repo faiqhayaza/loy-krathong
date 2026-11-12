@@ -31,6 +31,7 @@
 
 import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { clientIp } from '@/lib/clientIp';
 import { bangkokDay } from '@/lib/bangkok';
 import { calendarFromConfig } from '@/lib/festival';
 import { isValidRecoveryId } from '@/lib/identity';
@@ -53,12 +54,6 @@ import { emptyCommunity } from '@/lib/festivalState';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-function clientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return req.headers.get('x-real-ip') ?? 'unknown';
-}
 
 function isAdminRequest(req: NextRequest): boolean {
   const token = process.env.LOY_ADMIN_TOKEN;

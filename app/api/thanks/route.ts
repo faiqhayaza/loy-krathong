@@ -29,6 +29,7 @@
 // Rate-limited at 5/minute/IP in its own bucket (scope 'thanks').
 
 import { NextRequest, NextResponse } from 'next/server';
+import { clientIp } from '@/lib/clientIp';
 import { containsBlocked } from '@/lib/data';
 import { isValidGratitudeCard, MAX_THANKS_CHARS } from '@/lib/gratitude';
 import { isValidRecoveryId } from '@/lib/identity';
@@ -38,12 +39,6 @@ import { addThanks, checkRateLimit, getGratitudeCounts, getThanksList } from '@/
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-function clientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return req.headers.get('x-real-ip') ?? 'unknown';
-}
 
 export async function GET() {
   const [counts, thanks] = await Promise.all([getGratitudeCounts(), getThanksList()]);

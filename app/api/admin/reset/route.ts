@@ -16,17 +16,12 @@
 // the only route that deletes visitor state.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { clientIp } from '@/lib/clientIp';
 import { appendAudit, checkRateLimit, resetAll } from '@/lib/store';
 import { requireAdmin } from '@/lib/adminAuth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-function clientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return req.headers.get('x-real-ip') ?? 'unknown';
-}
 
 export async function POST(req: NextRequest) {
   const denied = requireAdmin(req);
