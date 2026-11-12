@@ -60,9 +60,11 @@ Copy `.env.example` to `.env.local` and fill in what you need.
   automatically. The site works exactly the same, but wishes only live as
   long as that one server instance does. Nothing crashes, nothing is
   silently lost — the fallback is logged.
-- **Seeds:** the eight opening wishes live in `lib/seed.ts`. They are
-  merged into every `GET /api/wishes` response (newest-first by date) and
-  are never written to Redis.
+- **Seeds:** the river starts empty — `SEED_WISHES` in `lib/seed.ts` is an
+  empty list. The eight opening wishes shipped at launch and were removed
+  2026-11-11 at Faiq's call; they can be restored by putting the entries
+  back in `SEED_WISHES`. Seeds are merged into `GET /api/wishes` responses
+  and never written to Redis.
 
 ## API
 

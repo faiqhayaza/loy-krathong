@@ -14,8 +14,8 @@
 // temple faces, so the mask here is warmth x brightness only). The
 // photo's own temple replaces the WatArunSvg overlay (a real illuminated
 // Wat Arun reads better than the drawing at desktop size, and the SVG
-// would have put a second temple in the scene) — the SVG file stays in
-// the tree for the record. The photo's waterline sits at 72% of the
+// would have put a second temple in the scene) — the SVG file was
+// removed from the tree 2026-11-12 (dead code, nothing imported it). The photo's waterline sits at 72% of the
 // panel, so the sky is the top ~70% and the water the bottom ~28%;
 // the boats float in that water, in three rows, at about twice the
 // size they used to be — big enough to read as krathongs, not dots.

@@ -1,5 +1,11 @@
 # Verification — Seven Nights of Wishes
 
+> STALE — run on Fri 2026-11-06. The repo has changed since: 24 routes
+> (not "4 static pages"), the 8 seed wishes were removed 2026-11-11 so
+> the river starts empty, and `npm test` (scripts/smoke-test.mjs) now
+> re-checks the key properties automatically on every push. Keep this
+> file as the 2026-11-06 record; do not treat its claims as current.
+
 Run on Fri 2026-11-06, Node v24.22.1, npm 10.9.4, in `~/workspace/loy-krathong`.
 
 ## Build
