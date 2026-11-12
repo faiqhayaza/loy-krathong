@@ -99,9 +99,9 @@ try {
     r.status === 200 &&
     Array.isArray(r.body?.wishes) &&
     typeof r.body?.count === 'number' &&
-    (r.body?.storage === 'redis' || r.body?.storage === 'memory') &&
+    (r.body?.storage === 'kv' || r.body?.storage === 'memory') &&
     typeof r.body?.redisOk === 'boolean' &&
-    r.body.redisOk === (r.body.storage === 'redis');
+    r.body.redisOk === (r.body.storage === 'kv');
   check(
     'GET /api/wishes returns river + truthful storage field',
     wishesOk,

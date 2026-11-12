@@ -8,7 +8,7 @@
 // be restored by putting the entries back in SEED_WISHES below.
 //
 // Seeds were merged into every GET /api/wishes response but never
-// written to Redis; with this list empty, the river only ever shows
+// written to KV; with this list empty, the river only ever shows
 // wishes real visitors have floated.
 
 import type { Wish } from './data';

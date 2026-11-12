@@ -24,11 +24,11 @@ import { isValidRecoveryId } from '@/lib/identity';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-// The shared river is backed by a free-tier Redis with a daily command
-// budget, and every visitor polls this endpoint. A short server-side
-// cache (one Redis read per 30s per instance, at most) keeps a busy
-// festival night from exhausting it. Writes clear the cache, so a new
-// wish still shows up immediately. The cache itself lives in
+// The shared river is backed by Cloudflare KV (free tier: 100K reads/day,
+// 1K writes/day), and every visitor polls this endpoint. A short
+// server-side cache (one KV read per 30s per instance, at most) keeps a
+// busy festival night from exhausting it. Writes clear the cache, so a
+// new wish still shows up immediately. The cache itself lives in
 // lib/store.ts (listWishesCached) because a route file may not export
 // anything but route handlers — the bless route invalidates it the
 // same way after hanging a lantern.

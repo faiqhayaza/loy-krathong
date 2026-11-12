@@ -1,15 +1,15 @@
-// Storage watcher — pages the team when the river stops using Redis.
+// Storage watcher — pages the team when the river stops using Cloudflare KV.
 //
-// GET /api/wishes carries a public `storage` field: 'redis' when wishes
-// are shared through Upstash, 'memory' when the store has fallen back
-// to a per-instance in-memory store (Upstash over its command quota, or
-// down). In 'memory' mode a POST still returns 201, but the wish lives
+// GET /api/wishes carries a public `storage` field: 'kv' when wishes
+// are shared through Cloudflare KV, 'memory' when the store has fallen back
+// to a per-instance in-memory store (KV unreachable or unconfigured).
+// In 'memory' mode a POST still returns 201, but the wish lives
 // only in that one server instance's memory — other visitors never see
 // it, and it vanishes when the instance recycles. There is no alert for
 // that anywhere in the app, so this script is the alert.
 //
 // Run it on a schedule (see .github/workflows/storage-watch.yml, every
-// 5 minutes). Exit 0 = river is on Redis. Exit 1 = fallback engaged or
+// 5 minutes). Exit 0 = river is on KV. Exit 1 = fallback engaged or
 // the site did not answer — the workflow opens/updates a GitHub issue.
 //
 //   SITE_URL=https://loykrathong.web.id node scripts/storage-watch.mjs
@@ -47,15 +47,15 @@ try {
 
 const storage = payload?.storage;
 const redisOk = payload?.redisOk;
-if (storage !== 'redis' || redisOk === false) {
+if (storage !== 'kv' || redisOk === false) {
   fail(
     `river is on storage='${String(storage)}' (redisOk=${String(redisOk)}), ` +
-      `count=${String(payload?.count)} — wishes are NOT shared through Upstash. ` +
+      `count=${String(payload?.count)} — wishes are NOT shared through Cloudflare KV. ` +
       'See RUNBOOK.md "River is on in-memory storage".',
   );
 }
 
 console.log(
-  `[storage-watch] OK ${SITE_URL}: storage='redis', count=${payload.count}, ` +
+  `[storage-watch] OK ${SITE_URL}: storage='kv', count=${payload.count}, ` +
     `totalReactions=${payload.totalReactions}`,
 );

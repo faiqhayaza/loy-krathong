@@ -1,15 +1,16 @@
 # Storage watcher — polls the live river every 5 minutes and pages on fallback.
 #
-# GET /api/wishes carries a public `storage` field. When Upstash is over
-# its quota (or down), the app fails open to a per-instance in-memory
-# store: POSTs still return 201, but wishes live only in one server
-# instance and vanish on recycle. This workflow is the only alert for
-# that. On failure it opens (or reuses) a GitHub issue labelled
-# `storage-alert` with the run link and the runbook section to follow.
+# GET /api/wishes carries a public `storage` field. When Cloudflare KV is
+# unreachable (or its daily quota is spent), the app fails open to a
+# per-instance in-memory store: POSTs still return 201, but wishes live
+# only in one server instance and vanish on recycle. This workflow is the
+# only alert for that. On failure it opens (or reuses) a GitHub issue
+# labelled `storage-alert` with the run link and the runbook section to
+# follow.
 #
 # Cost of polling: GET /api/wishes is server-cached for 30 s, so the
-# watcher costs at most ~2 Redis reads a minute — noise against the
-# 500K/month free quota. It does NOT write anything to the store.
+# watcher costs at most ~2 KV reads a minute — noise against the
+# 100K/day free quota. It does NOT write anything to the store.
 
 name: storage-watch
 
@@ -50,13 +51,13 @@ jobs:
               labels: label,
             });
             const body = [
-              `The storage watcher saw \`storage != 'redis'\` on GET /api/wishes at ${new Date().toISOString()}.`,
+              `The storage watcher saw \`storage != 'kv'\` on GET /api/wishes at ${new Date().toISOString()}.`,
               '',
               'Wishes posted while this lasts return 201 but live only in one server instance — other visitors never see them.',
               '',
               `Failed run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               '',
-              'Follow RUNBOOK.md, section "River is on in-memory storage" (Upstash quota / new store / wait for the 1 Dec reset).',
+              'Follow RUNBOOK.md, section "River is on in-memory storage" (KV env vars / token / daily quota).',
             ].join('\n');
             if (open.data.length > 0) {
               await github.rest.issues.createComment({

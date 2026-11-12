@@ -1,12 +1,20 @@
 // Storage for the shared river.
 //
-// Primary backend: Upstash Redis (REST) when UPSTASH_REDIS_REST_URL and
-// UPSTASH_REDIS_REST_TOKEN are both set. Fallback: an in-memory store seeded
-// with nothing (seeds are merged at read time, never written), so the site
-// still works on a preview deploy with zero config. Nothing here ever
-// throws on a missing or unreachable Redis — it logs and falls back.
+// Primary backend: Cloudflare KV (REST) when CLOUDFLARE_ACCOUNT_ID,
+// LOY_KV_NAMESPACE_ID and LOY_KV_API_TOKEN are all set (see lib/kv.ts).
+// Fallback: an in-memory store seeded with nothing (seeds are merged at
+// read time, never written), so the site still works on a preview deploy
+// with zero config. Nothing here ever throws on a missing or unreachable
+// KV — it logs and falls back.
+//
+// KV is a document store, not Redis: the river's data lives as JSON
+// documents under the same `loy:*` key scheme — one document for the
+// wishes list, one for the reaction counts map, one per visitor state,
+// and so on. Writes are read-modify-write on a document; the race
+// window is milliseconds and festival traffic is a handful of writes
+// a day, so that is fine here. The in-memory fallback mirrors the
+// same shapes.
 
-import { Redis } from '@upstash/redis';
 import { createHash } from 'crypto';
 import type { ReactionCounts, ReactionId, Wish } from './data';
 import type { FestivalEvent } from './events';
@@ -19,9 +27,29 @@ import {
   type VisitorClaim,
   type VisitorState,
 } from './festivalState';
+import {
+  getKv,
+  kvCountUp,
+  kvDelete,
+  kvDeleteMany,
+  kvGet,
+  kvGetJSON,
+  kvIncr,
+  kvList,
+  kvPut,
+  kvPutJSON,
+  kvSetNX,
+  usingKv,
+  type KvClient,
+} from './kv';
 
+// One JSON document per key (see lib/kv.ts). The wishes list is a single
+// array document (max 200 wishes); reactions and blessing counts are
+// single map documents so a river read costs 3 KV reads, not one per
+// wish. Per-visitor and per-wish detail lives in its own document.
 const WISHES_KEY = 'loy:wishes';
-const REACTIONS_KEY = (id: string) => `loy:reactions:${id}`;
+const REACTIONS_KEY = 'loy:reactions';
+const BLESSING_COUNTS_KEY = 'loy:blessing-counts';
 const BLESSINGS_KEY = (id: string) => `loy:blessings:${id}`;
 const SENT_KEY = (visitorId: string) => `loy:sent:${visitorId}`;
 const GRATITUDE_COUNTS_KEY = 'loy:gratitude-counts';
@@ -50,46 +78,18 @@ export function bumpWishesVersion(): void {
   memWishesVersion += 1;
 }
 
-let redis: Redis | null = null;
-let redisTried = false;
-
-function getRedis(): Redis | null {
-  if (redisTried) return redis;
-  redisTried = true;
-  // Primary names (Upstash dashboard default). The store this project
-  // reuses — the team's free `faiq-personal` — was connected with the KV
-  // prefix, so its variables are KV_REST_API_URL / KV_REST_API_TOKEN.
-  // Either pair works; same store, same `loy:*` keys.
-  const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
-  if (url && token) {
-    try {
-      redis = new Redis({ url, token });
-    } catch (err) {
-      console.error('[loy] Redis init failed, using in-memory store:', err);
-      redis = null;
-    }
-  }
-  return redis;
-}
-
-/** True when the Redis backend is configured (not a guarantee it answers). */
-export function usingRedis(): boolean {
-  return getRedis() !== null;
-}
-
-// Where the last river read actually came from. `usingRedis()` only
-// proves the env vars are set — when Upstash is over its command quota
-// (or down), reads fall back to per-instance memory while `usingRedis()`
-// still says true. The public `storage` field in GET /api/wishes must
-// report what really served the read, or the storage watcher (see
-// scripts/storage-watch.mjs) cannot see the fallback engage.
-let lastWishesReadFrom: 'redis' | 'memory' | null = null;
+// Where the last river read actually came from. `usingKv()` only
+// proves the env vars are set — when KV is unreachable, reads fall back
+// to per-instance memory while `usingKv()` still says true. The public
+// `storage` field in GET /api/wishes must report what really served the
+// read, or the storage watcher (see scripts/storage-watch.mjs) cannot
+// see the fallback engage.
+let lastWishesReadFrom: 'kv' | 'memory' | null = null;
 
 /** What really served the last river read — the truthful health signal. */
-export function storageStatus(): 'redis' | 'memory' {
-  if (!usingRedis()) return 'memory';
-  return lastWishesReadFrom ?? 'redis';
+export function storageStatus(): 'kv' | 'memory' {
+  if (!usingKv()) return 'memory';
+  return lastWishesReadFrom ?? 'kv';
 }
 
 // ---- In-memory fallback -------------------------------------------------
@@ -108,25 +108,20 @@ const memThanksBy = new Map<string, { card: number; note: string | null; at: num
 // ---- Reads ---------------------------------------------------------------
 
 async function readStoredWishes(): Promise<Wish[]> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const raw = await client.lrange(WISHES_KEY, 0, MAX_STORED - 1);
+      const stored = (await kvGetJSON<Wish[]>(client, WISHES_KEY)) ?? [];
       const wishes: Wish[] = [];
-      for (const item of raw) {
-        try {
-          const w = (typeof item === 'string' ? JSON.parse(item) : item) as Wish;
-          if (w && typeof w.id === 'string' && typeof w.wish === 'string') {
-            wishes.push({ ...w, reactions: { ...EMPTY_REACTIONS, ...(w.reactions ?? {}) } });
-          }
-        } catch {
-          // Skip a single corrupt entry rather than failing the whole river.
+      for (const w of stored) {
+        if (w && typeof w.id === 'string' && typeof w.wish === 'string') {
+          wishes.push({ ...w, reactions: { ...EMPTY_REACTIONS, ...(w.reactions ?? {}) } });
         }
       }
-      lastWishesReadFrom = 'redis';
+      lastWishesReadFrom = 'kv';
       return wishes;
     } catch (err) {
-      console.error('[loy] Redis read failed, falling back to memory:', err);
+      console.error('[loy] KV read failed, falling back to memory:', err);
       lastWishesReadFrom = 'memory';
     }
   }
@@ -135,25 +130,23 @@ async function readStoredWishes(): Promise<Wish[]> {
 
 async function readReactionCounts(ids: string[]): Promise<Map<string, ReactionCounts>> {
   const out = new Map<string, ReactionCounts>();
-  const client = getRedis();
+  const client = getKv();
   if (client && ids.length > 0) {
     try {
-      const pipe = client.pipeline();
-      for (const id of ids) pipe.hgetall(REACTIONS_KEY(id));
-      const results = await pipe.exec();
-      ids.forEach((id, i) => {
-        const row = (results[i] ?? {}) as Record<string, number | string>;
+      const row = (await kvGetJSON<Record<string, ReactionCounts>>(client, REACTIONS_KEY)) ?? {};
+      for (const id of ids) {
+        const c = row[id] ?? {};
         out.set(id, {
-          sathu: Number(row.sathu ?? 0) || 0,
-          love: Number(row.love ?? 0) || 0,
-          hug: Number(row.hug ?? 0) || 0,
-          care: Number(row.care ?? 0) || 0,
-          peace: Number(row.peace ?? 0) || 0,
+          sathu: Number(c.sathu ?? 0) || 0,
+          love: Number(c.love ?? 0) || 0,
+          hug: Number(c.hug ?? 0) || 0,
+          care: Number(c.care ?? 0) || 0,
+          peace: Number(c.peace ?? 0) || 0,
         });
-      });
+      }
       return out;
     } catch (err) {
-      console.error('[loy] Redis reaction read failed:', err);
+      console.error('[loy] KV reaction read failed:', err);
     }
   }
   for (const id of ids) {
@@ -165,7 +158,7 @@ async function readReactionCounts(ids: string[]): Promise<Map<string, ReactionCo
 /**
  * The whole river: stored wishes (newest first) merged with the eight seed
  * wishes, sorted newest-first by createdAt. Seeds are never written to
- * Redis — they are merged here, marked isSeed. Reaction counts are merged
+ * KV — they are merged here, marked isSeed. Reaction counts are merged
  * in for every wish; seeds start at zero.
  */
 export async function listWishes(): Promise<{ wishes: Wish[]; totalReactions: number }> {
@@ -196,12 +189,11 @@ export async function listWishes(): Promise<{ wishes: Wish[]; totalReactions: nu
 
 // ---- The river's short server-side cache (GET /api/wishes) -------------
 //
-// The shared river is backed by a free-tier Redis with a daily command
-// budget, and every visitor polls GET /api/wishes. One Redis read per
-// 30 s per instance, at most. The cache lives here (not in the route
-// file) because a route file may not export anything but route
-// handlers — any write route that changes what the river shows
-// (a float, a blessing lantern) invalidates it through
+// The shared river is backed by a free-tier KV store, and every visitor
+// polls GET /api/wishes. One KV read per 30 s per instance, at most. The
+// cache lives here (not in the route file) because a route file may not
+// export anything but route handlers — any write route that changes what
+// the river shows (a float, a blessing lantern) invalidates it through
 // invalidateWishesCache().
 
 const WISHES_CACHE_TTL_MS = 30_000;
@@ -228,15 +220,16 @@ export async function listWishesCached(): Promise<{
     return wishesCache.payload;
   }
   const { wishes, totalReactions } = await listWishes();
-  // `storage` is a first-hand health signal: "redis" proves wishes are
-  // shared through Upstash; "memory" means the river is running on a
-  // per-instance fallback. It reports what the read above actually hit
-  // (storageStatus), NOT just whether the env vars are set — when
-  // Upstash is over its quota the reads fail and the fallback engages,
-  // and this field is how the watcher notices. `redisOk` is the same
-  // signal as a boolean for the watcher script.
+  // `storage` is a first-hand health signal: "kv" proves wishes are
+  // shared through Cloudflare KV; "memory" means the river is running on
+  // a per-instance fallback. It reports what the read above actually hit
+  // (storageStatus), NOT just whether the env vars are set — when KV is
+  // unreachable the reads fail and the fallback engages, and this field
+  // is how the watcher notices. `redisOk` is the same signal as a
+  // boolean for the watcher script (the name is historical — it means
+  // "the shared store is reachable", not Redis specifically).
   const storage = storageStatus();
-  const payload = { wishes, count: wishes.length, totalReactions, storage, redisOk: storage === 'redis' };
+  const payload = { wishes, count: wishes.length, totalReactions, storage, redisOk: storage === 'kv' };
   wishesCache = { at: now, version: wishesVersion(), payload };
   return payload;
 }
@@ -279,15 +272,17 @@ export async function listStoredWishesRaw(): Promise<Wish[]> {
 // ---- Writes ---------------------------------------------------------------
 
 export async function addWish(wish: Wish): Promise<void> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      await client.lpush(WISHES_KEY, JSON.stringify(wish));
-      await client.ltrim(WISHES_KEY, 0, MAX_STORED - 1);
+      const stored = (await kvGetJSON<Wish[]>(client, WISHES_KEY)) ?? [];
+      stored.unshift(wish);
+      if (stored.length > MAX_STORED) stored.length = MAX_STORED;
+      await kvPutJSON(client, WISHES_KEY, stored);
       bumpWishesVersion();
       return;
     } catch (err) {
-      console.error('[loy] Redis write failed, keeping wish in memory:', err);
+      console.error('[loy] KV write failed, keeping wish in memory:', err);
     }
   }
   memWishes.unshift(wish);
@@ -317,23 +312,24 @@ export async function setReaction(
   previous: ReactionId | null,
   next: ReactionId | null,
 ): Promise<ReactionCounts | null> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const row = (await client.hgetall(REACTIONS_KEY(id))) as Record<string, string>;
+      const row = (await kvGetJSON<Record<string, ReactionCounts>>(client, REACTIONS_KEY)) ?? {};
       const counts: ReactionCounts = {
-        sathu: Number(row.sathu ?? 0) || 0,
-        love: Number(row.love ?? 0) || 0,
-        hug: Number(row.hug ?? 0) || 0,
-        care: Number(row.care ?? 0) || 0,
-        peace: Number(row.peace ?? 0) || 0,
+        sathu: Number(row[id]?.sathu ?? 0) || 0,
+        love: Number(row[id]?.love ?? 0) || 0,
+        hug: Number(row[id]?.hug ?? 0) || 0,
+        care: Number(row[id]?.care ?? 0) || 0,
+        peace: Number(row[id]?.peace ?? 0) || 0,
       };
       if (previous) counts[previous] = Math.max(0, counts[previous] - 1);
       if (next) counts[next] += 1;
-      await client.hset(REACTIONS_KEY(id), { ...counts } as Record<string, number>);
+      row[id] = counts;
+      await kvPutJSON(client, REACTIONS_KEY, row);
       return counts;
     } catch (err) {
-      console.error('[loy] Redis reaction write failed:', err);
+      console.error('[loy] KV reaction write failed:', err);
     }
   }
   const current = memReactions.get(id) ?? { ...EMPTY_REACTIONS };
@@ -344,27 +340,22 @@ export async function setReaction(
 }
 
 export async function deleteWish(id: string): Promise<boolean> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      // LREM needs the exact stored value; fetch the list and find it.
-      const raw = await client.lrange(WISHES_KEY, 0, MAX_STORED - 1);
-      let removed = 0;
-      for (const item of raw) {
-        const text = typeof item === 'string' ? item : JSON.stringify(item);
-        try {
-          if ((JSON.parse(text) as Wish).id === id) {
-            removed += await client.lrem(WISHES_KEY, 1, text);
-          }
-        } catch {
-          // ignore corrupt entries
-        }
+      const stored = (await kvGetJSON<Wish[]>(client, WISHES_KEY)) ?? [];
+      const kept = stored.filter((w) => w.id !== id);
+      const removed = stored.length - kept.length;
+      if (removed > 0) {
+        await kvPutJSON(client, WISHES_KEY, kept);
+        const row = (await kvGetJSON<Record<string, ReactionCounts>>(client, REACTIONS_KEY)) ?? {};
+        delete row[id];
+        await kvPutJSON(client, REACTIONS_KEY, row);
+        bumpWishesVersion();
       }
-      await client.del(REACTIONS_KEY(id));
-      if (removed > 0) bumpWishesVersion();
       return removed > 0;
     } catch (err) {
-      console.error('[loy] Redis delete failed:', err);
+      console.error('[loy] KV delete failed:', err);
       return false;
     }
   }
@@ -385,19 +376,17 @@ const memRestoreId = new Map<string, { count: number; resetAt: number }>();
 /**
  * Restore-attempt limit per recovery ID: max 10 tries per hour for one
  * ID, whatever the IPs (E1 — the ID is a bearer token, so guessing one
- * ID from many addresses must still stop). Redis: INCR + 1h expiry;
- * in-memory fallback: same rule, same window.
+ * ID from many addresses must still stop). KV: a counter document with
+ * a 1h expiry; in-memory fallback: same rule, same window.
  */
 export async function checkRestoreIdLimit(id: string): Promise<boolean> {
   const key = RESTORE_ID_KEY(id);
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const count = await client.incr(key);
-      if (count === 1) await client.expire(key, 3600);
-      return count <= RESTORE_ID_MAX_PER_HOUR;
+      return await kvCountUp(client, key, RESTORE_ID_MAX_PER_HOUR, 3600);
     } catch (err) {
-      console.error('[loy] Redis restore-id limit failed, using memory:', err);
+      console.error('[loy] KV restore-id limit failed, using memory:', err);
     }
   }
   const now = Date.now();
@@ -420,14 +409,12 @@ export async function checkRestoreIdLimit(id: string): Promise<boolean> {
  * ceiling fits the use.
  */
 export async function checkRateLimit(ip: string, scope = '', max: number = POSTS_PER_MINUTE): Promise<boolean> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const count = await client.incr(RATE_KEY(ip, scope));
-      if (count === 1) await client.expire(RATE_KEY(ip, scope), 60);
-      return count <= max;
+      return await kvCountUp(client, RATE_KEY(ip, scope), max, 60);
     } catch (err) {
-      console.error('[loy] Redis rate-limit check failed, allowing:', err);
+      console.error('[loy] KV rate-limit check failed, allowing:', err);
       return true;
     }
   }
@@ -446,21 +433,20 @@ export async function checkRateLimit(ip: string, scope = '', max: number = POSTS
 /**
  * One float per Bangkok day per IP, like the original site. The first call
  * for an IP on a day claims that day's slot and returns true; any later
- * call the same day returns false. Redis: SET NX with expiry to the next
+ * call the same day returns false. KV: SET NX with expiry to the next
  * Bangkok midnight, so the key cleans itself up. In-memory fallback:
- * same rule, same expiry. A Redis error falls back to memory rather than
+ * same rule, same expiry. A KV error falls back to memory rather than
  * blocking the river — the limit is a fairness rule, not a security gate.
  */
 export async function checkDailyLimit(ip: string, day: string): Promise<boolean> {
   const key = DAILY_KEY(ip, day);
   const ttlSeconds = Math.max(1, Math.ceil(msUntilBangkokMidnight() / 1000));
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const claimed = await client.set(key, '1', { nx: true, ex: ttlSeconds });
-      return claimed === 'OK';
+      return await kvSetNX(client, key, '1', ttlSeconds);
     } catch (err) {
-      console.error('[loy] Redis daily-limit check failed, using memory:', err);
+      console.error('[loy] KV daily-limit check failed, using memory:', err);
     }
   }
   const now = Date.now();
@@ -473,18 +459,18 @@ export async function checkDailyLimit(ip: string, day: string): Promise<boolean>
 /**
  * Release today's daily slot for an IP. Called only after an
  * owner-checked DELETE removes the visitor's own krathong, so they can
- * float again the same day. Redis: DEL the key; in-memory fallback:
+ * float again the same day. KV: DEL the key; in-memory fallback:
  * drop the entry. The 5/min rate limit still applies to the re-float.
  */
 export async function clearDailyLimit(ip: string, day: string): Promise<void> {
   const key = DAILY_KEY(ip, day);
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      await client.del(key);
+      await kvDelete(client, key);
       return;
     } catch (err) {
-      console.error('[loy] Redis daily-limit clear failed, using memory:', err);
+      console.error('[loy] KV daily-limit clear failed, using memory:', err);
     }
   }
   memDaily.delete(key);
@@ -494,8 +480,8 @@ export async function clearDailyLimit(ip: string, day: string): Promise<void> {
 
 /**
  * The forward-compatible per-visitor event log E1 will later read as
- * `me.events`: Redis list `loy:events:<recovery-id>` (in-memory fallback
- * when Redis is absent, same pattern as wishes). Keyed by the visitor's
+ * `me.events`: KV document `loy:events:<recovery-id>` (in-memory fallback
+ * when KV is absent, same pattern as wishes). Keyed by the visitor's
  * recovery ID — never by nickname, eID, or anything personal. The
  * device-local store (`lib/events.ts`) is the source of truth for now;
  * this log mirrors it. Repeats (same day + kind + ref) are ignored, so
@@ -506,26 +492,24 @@ const MAX_EVENTS_PER_VISITOR = 500;
 
 export async function recordServerEvent(visitorId: string, event: FestivalEvent): Promise<boolean> {
   const key = EVENTS_KEY(visitorId);
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const raw = await client.lrange(key, 0, MAX_EVENTS_PER_VISITOR - 1);
-      for (const item of raw) {
-        try {
-          const e = (typeof item === 'string' ? JSON.parse(item) : item) as FestivalEvent;
-          if (e.day === event.day && e.kind === event.kind && e.ref === event.ref) return false;
-        } catch {
-          // skip a corrupt entry; the new event still records
-        }
+      const list = (await kvGetJSON<FestivalEvent[]>(client, key)) ?? [];
+      if (list.some((e) => e.day === event.day && e.kind === event.kind && e.ref === event.ref)) {
+        return false;
       }
-      await client.rpush(key, JSON.stringify(event));
-      await client.ltrim(key, 0, MAX_EVENTS_PER_VISITOR - 1);
+      list.push(event);
+      if (list.length > MAX_EVENTS_PER_VISITOR) {
+        list.splice(0, list.length - MAX_EVENTS_PER_VISITOR);
+      }
+      await kvPutJSON(client, key, list);
       // E1: the visitor doc (`loy:visitor:<id>`) is what api/state
       // returns as me.events, so the log write is mirrored there.
       await mergeEventIntoVisitorState(visitorId, event);
       return true;
     } catch (err) {
-      console.error('[loy] Redis event write failed, keeping event in memory:', err);
+      console.error('[loy] KV event write failed, keeping event in memory:', err);
     }
   }
   const list = memEvents.get(visitorId) ?? [];
@@ -545,26 +529,19 @@ export async function removeServerEvent(
   ref: string | number,
 ): Promise<boolean> {
   const key = EVENTS_KEY(visitorId);
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const raw = await client.lrange(key, 0, MAX_EVENTS_PER_VISITOR - 1);
-      let removed = false;
-      for (const item of raw) {
-        const text = typeof item === 'string' ? item : JSON.stringify(item);
-        try {
-          const e = JSON.parse(text) as FestivalEvent;
-          if (e.day === day && e.kind === kind && e.ref === ref) {
-            removed = (await client.lrem(key, 1, text)) > 0 || removed;
-          }
-        } catch {
-          // ignore corrupt entries
-        }
+      const list = (await kvGetJSON<FestivalEvent[]>(client, key)) ?? [];
+      const kept = list.filter((e) => !(e.day === day && e.kind === kind && e.ref === ref));
+      const removed = kept.length !== list.length;
+      if (removed) {
+        await kvPutJSON(client, key, kept);
+        await removeEventFromVisitorState(visitorId, day, kind, ref);
       }
-      if (removed) await removeEventFromVisitorState(visitorId, day, kind, ref);
       return removed;
     } catch (err) {
-      console.error('[loy] Redis event remove failed:', err);
+      console.error('[loy] KV event remove failed:', err);
       return false;
     }
   }
@@ -630,7 +607,8 @@ export async function hasSecretEvidence(visitorId: string, slug: string): Promis
   return state.events.some((e) => e.kind === 'secret' && e.ref === slug);
 }
 
-// ---- Blessing lanterns (B2) -----------------------------------------------
+
+// ---- Blessings (B2 / E4) ----------------------------------------------------
 
 export interface ReceivedBlessing {
   message: number;
@@ -640,19 +618,17 @@ export interface ReceivedBlessing {
 
 const MAX_BLESSINGS_PER_WISH = 50;
 
-/** Counts of blessing lanterns per wish id (Redis LLEN / memory lengths). */
+/** Counts of blessing lanterns per wish id (KV map doc / memory lengths). */
 export async function readBlessingCounts(ids: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
-  const client = getRedis();
+  const client = getKv();
   if (client && ids.length > 0) {
     try {
-      const pipe = client.pipeline();
-      for (const id of ids) pipe.llen(BLESSINGS_KEY(id));
-      const results = await pipe.exec();
-      ids.forEach((id, i) => out.set(id, Number(results[i] ?? 0) || 0));
+      const row = (await kvGetJSON<Record<string, number>>(client, BLESSING_COUNTS_KEY)) ?? {};
+      for (const id of ids) out.set(id, Number(row[id] ?? 0) || 0);
       return out;
     } catch (err) {
-      console.error('[loy] Redis blessing-count read failed:', err);
+      console.error('[loy] KV blessing-count read failed:', err);
     }
   }
   for (const id of ids) out.set(id, memBlessings.get(id)?.length ?? 0);
@@ -663,7 +639,8 @@ export async function readBlessingCounts(ids: string[]): Promise<Map<string, num
  * Hang one blessing lantern on a wish: appends {message, from, at} to
  * `loy:blessings:<wishId>` (capped at 50) and returns the new count.
  * `from` is the sender's display nickname (never an id) — the receiver
- * sees it in their My Krathong panel (C4).
+ * sees it in their My Krathong panel (C4). The counts map doc is kept
+ * in step so the river read stays one KV read, not one per wish.
  */
 export async function addBlessing(
   wishId: string,
@@ -671,14 +648,21 @@ export async function addBlessing(
   from: string,
 ): Promise<number> {
   const entry: ReceivedBlessing = { message, from: from.slice(0, 40), at: Date.now() };
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const count = await client.rpush(BLESSINGS_KEY(wishId), JSON.stringify(entry));
-      await client.ltrim(BLESSINGS_KEY(wishId), -MAX_BLESSINGS_PER_WISH, -1);
-      return Math.min(count, MAX_BLESSINGS_PER_WISH);
+      const list = (await kvGetJSON<ReceivedBlessing[]>(client, BLESSINGS_KEY(wishId))) ?? [];
+      list.push(entry);
+      if (list.length > MAX_BLESSINGS_PER_WISH) {
+        list.splice(0, list.length - MAX_BLESSINGS_PER_WISH);
+      }
+      await kvPutJSON(client, BLESSINGS_KEY(wishId), list);
+      const counts = (await kvGetJSON<Record<string, number>>(client, BLESSING_COUNTS_KEY)) ?? {};
+      counts[wishId] = list.length;
+      await kvPutJSON(client, BLESSING_COUNTS_KEY, counts);
+      return list.length;
     } catch (err) {
-      console.error('[loy] Redis blessing write failed, keeping it in memory:', err);
+      console.error('[loy] KV blessing write failed, keeping it in memory:', err);
     }
   }
   const list = memBlessings.get(wishId) ?? [];
@@ -690,22 +674,17 @@ export async function addBlessing(
 
 /** The lanterns a wish received, oldest first (max 50). */
 export async function getBlessings(wishId: string): Promise<ReceivedBlessing[]> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const raw = await client.lrange(BLESSINGS_KEY(wishId), 0, MAX_BLESSINGS_PER_WISH - 1);
+      const list = (await kvGetJSON<ReceivedBlessing[]>(client, BLESSINGS_KEY(wishId))) ?? [];
       const out: ReceivedBlessing[] = [];
-      for (const item of raw) {
-        try {
-          const b = (typeof item === 'string' ? JSON.parse(item) : item) as ReceivedBlessing;
-          if (b && typeof b.message === 'number') out.push(b);
-        } catch {
-          // skip a corrupt entry
-        }
+      for (const b of list) {
+        if (b && typeof b.message === 'number') out.push(b);
       }
       return out;
     } catch (err) {
-      console.error('[loy] Redis blessing read failed:', err);
+      console.error('[loy] KV blessing read failed:', err);
     }
   }
   return [...(memBlessings.get(wishId) ?? [])];
@@ -718,12 +697,16 @@ export async function getBlessings(wishId: string): Promise<ReceivedBlessing[]> 
  * this wish (and remembers it); false when one was already sent.
  */
 export async function markSentBlessing(visitorId: string, wishId: string): Promise<boolean> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      return (await client.sadd(SENT_KEY(visitorId), wishId)) === 1;
+      const sent = (await kvGetJSON<string[]>(client, SENT_KEY(visitorId))) ?? [];
+      if (sent.includes(wishId)) return false;
+      sent.push(wishId);
+      await kvPutJSON(client, SENT_KEY(visitorId), sent);
+      return true;
     } catch (err) {
-      console.error('[loy] Redis sent-blessing write failed, using memory:', err);
+      console.error('[loy] KV sent-blessing write failed, using memory:', err);
     }
   }
   const set = memSent.get(visitorId) ?? new Set<string>();
@@ -749,15 +732,15 @@ const MAX_THANKS_LISTED = 30;
  * counts as 1 for its card — the client adds that itself.
  */
 export async function getGratitudeCounts(): Promise<Record<number, number>> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const row = (await client.hgetall(GRATITUDE_COUNTS_KEY)) as Record<string, string>;
+      const row = (await kvGetJSON<Record<string, number>>(client, GRATITUDE_COUNTS_KEY)) ?? {};
       const out: Record<number, number> = {};
       for (const [k, v] of Object.entries(row)) out[Number(k)] = Number(v) || 0;
       return out;
     } catch (err) {
-      console.error('[loy] Redis gratitude-count read failed:', err);
+      console.error('[loy] KV gratitude-count read failed:', err);
     }
   }
   const out: Record<number, number> = {};
@@ -767,22 +750,17 @@ export async function getGratitudeCounts(): Promise<Record<number, number>> {
 
 /** Lanterns of thanks drifting on the water, newest first (max 30). */
 export async function getThanksList(): Promise<CommunityThanks[]> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const raw = await client.lrange(THANKS_LIST_KEY, 0, MAX_THANKS_LISTED - 1);
+      const list = (await kvGetJSON<CommunityThanks[]>(client, THANKS_LIST_KEY)) ?? [];
       const out: CommunityThanks[] = [];
-      for (const item of raw) {
-        try {
-          const t = (typeof item === 'string' ? JSON.parse(item) : item) as CommunityThanks;
-          if (t && typeof t.card === 'number') out.push(t);
-        } catch {
-          // skip a corrupt entry
-        }
+      for (const t of list) {
+        if (t && typeof t.card === 'number') out.push(t);
       }
-      return out;
+      return out.slice(0, MAX_THANKS_LISTED);
     } catch (err) {
-      console.error('[loy] Redis thanks-list read failed:', err);
+      console.error('[loy] KV thanks-list read failed:', err);
     }
   }
   return [...memThanksList].slice(0, MAX_THANKS_LISTED);
@@ -801,20 +779,24 @@ export async function addThanks(
   visitorId?: string | null,
 ): Promise<CommunityThanks | null> {
   const entry: CommunityThanks = { card, note: note ? note.slice(0, 60) : null, at: Date.now() };
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
       if (visitorId) {
-        const existing = await client.get(THANKS_BY_KEY(visitorId));
+        const existing = await kvGet(client, THANKS_BY_KEY(visitorId));
         if (existing) return null;
-        await client.set(THANKS_BY_KEY(visitorId), JSON.stringify(entry));
+        await kvPut(client, THANKS_BY_KEY(visitorId), JSON.stringify(entry));
       }
-      await client.hincrby(GRATITUDE_COUNTS_KEY, String(card), 1);
-      await client.lpush(THANKS_LIST_KEY, JSON.stringify(entry));
-      await client.ltrim(THANKS_LIST_KEY, 0, MAX_THANKS_LISTED - 1);
+      const counts = (await kvGetJSON<Record<string, number>>(client, GRATITUDE_COUNTS_KEY)) ?? {};
+      counts[String(card)] = (Number(counts[String(card)] ?? 0) || 0) + 1;
+      await kvPutJSON(client, GRATITUDE_COUNTS_KEY, counts);
+      const list = (await kvGetJSON<CommunityThanks[]>(client, THANKS_LIST_KEY)) ?? [];
+      list.unshift(entry);
+      if (list.length > MAX_THANKS_LISTED) list.length = MAX_THANKS_LISTED;
+      await kvPutJSON(client, THANKS_LIST_KEY, list);
       return entry;
     } catch (err) {
-      console.error('[loy] Redis thanks write failed, keeping it in memory:', err);
+      console.error('[loy] KV thanks write failed, keeping it in memory:', err);
     }
   }
   if (visitorId) {
@@ -835,13 +817,13 @@ let memConfig: FestivalConfig | null = null;
 
 /** The organiser config; defaults when nothing was ever saved. */
 export async function getConfig(): Promise<FestivalConfig> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const raw = await client.get<Record<string, unknown>>(CONFIG_KEY);
-      if (raw) return parseConfig(typeof raw === 'string' ? JSON.parse(raw) : raw);
+      const raw = await kvGet(client, CONFIG_KEY);
+      if (raw) return parseConfig(JSON.parse(raw));
     } catch (err) {
-      console.error('[loy] Redis config read failed, using memory:', err);
+      console.error('[loy] KV config read failed, using memory:', err);
     }
   }
   return memConfig ?? { ...DEFAULT_CONFIG, targets: [...DEFAULT_CONFIG.targets] };
@@ -849,13 +831,13 @@ export async function getConfig(): Promise<FestivalConfig> {
 
 export async function saveConfig(config: FestivalConfig): Promise<void> {
   const parsed = parseConfig(config);
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      await client.set(CONFIG_KEY, JSON.stringify(parsed));
+      await kvPut(client, CONFIG_KEY, JSON.stringify(parsed));
       return;
     } catch (err) {
-      console.error('[loy] Redis config write failed, keeping in memory:', err);
+      console.error('[loy] KV config write failed, keeping in memory:', err);
     }
   }
   memConfig = parsed;
@@ -918,13 +900,13 @@ function parseVisitorState(raw: unknown): VisitorState {
 
 /** The visitor's server-side state, or an empty one when they have none. */
 export async function getVisitorState(visitorId: string): Promise<VisitorState> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const raw = await client.get<Record<string, unknown>>(VISITOR_KEY(visitorId));
-      if (raw) return parseVisitorState(typeof raw === 'string' ? JSON.parse(raw) : raw);
+      const raw = await kvGet(client, VISITOR_KEY(visitorId));
+      if (raw) return parseVisitorState(JSON.parse(raw));
     } catch (err) {
-      console.error('[loy] Redis visitor read failed, using memory:', err);
+      console.error('[loy] KV visitor read failed, using memory:', err);
     }
   }
   return memVisitors.get(visitorId) ?? emptyVisitorState();
@@ -932,13 +914,13 @@ export async function getVisitorState(visitorId: string): Promise<VisitorState> 
 
 export async function saveVisitorState(visitorId: string, state: VisitorState): Promise<void> {
   const parsed = parseVisitorState(state);
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      await client.set(VISITOR_KEY(visitorId), JSON.stringify(parsed));
+      await kvPutJSON(client, VISITOR_KEY(visitorId), parsed);
       return;
     } catch (err) {
-      console.error('[loy] Redis visitor write failed, keeping in memory:', err);
+      console.error('[loy] KV visitor write failed, keeping in memory:', err);
     }
   }
   memVisitors.set(visitorId, parsed);
@@ -1069,16 +1051,17 @@ const SKY_KEY = (day: string) => `loy:sky:${day}`;
 const FLOATERS_KEY = 'loy:floaters';
 
 const memCounters = new Map<string, number>();
-const memThanks = new Map<string, NonNullable<VisitorState['thanks']>[]>();const memSky = new Map<string, { id: string; message: number; to: string }[]>();
+const memThanks = new Map<string, NonNullable<VisitorState['thanks']>[]>();
+const memSky = new Map<string, { id: string; message: number; to: string }[]>();
 const memFloaters = new Set<string>();
 
 async function incrCounter(key: string, by: number): Promise<number> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      return await client.incrby(key, by);
+      return await kvIncr(client, key, by);
     } catch (err) {
-      console.error('[loy] Redis counter failed, using memory:', err);
+      console.error('[loy] KV counter failed, using memory:', err);
     }
   }
   const next = (memCounters.get(key) ?? 0) + by;
@@ -1087,12 +1070,12 @@ async function incrCounter(key: string, by: number): Promise<number> {
 }
 
 async function readCounter(key: string): Promise<number> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      return Number(await client.get<number>(key)) || 0;
+      return Number(await kvGet(client, key)) || 0;
     } catch (err) {
-      console.error('[loy] Redis counter read failed, using memory:', err);
+      console.error('[loy] KV counter read failed, using memory:', err);
     }
   }
   return memCounters.get(key) ?? 0;
@@ -1149,16 +1132,16 @@ export async function incrementCandlesOnce(
 ): Promise<{ count: number; first: boolean }> {
   const litKey = CANDLE_LIT_KEY(visitorKey, day);
   const ttlSeconds = Math.max(1, Math.ceil(msUntilBangkokMidnight() / 1000));
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const first = (await client.set(litKey, '1', { nx: true, ex: ttlSeconds })) === 'OK';
+      const first = await kvSetNX(client, litKey, '1', ttlSeconds);
       if (!first) return { count: await readCounter(CANDLES_TOTAL_KEY), first: false };
       await incrementCandles(day);
       const count = await incrCounter(CANDLES_TOTAL_KEY, 1);
       return { count, first: true };
     } catch (err) {
-      console.error('[loy] Redis candle write failed, keeping it in memory:', err);
+      console.error('[loy] KV candle write failed, keeping it in memory:', err);
     }
   }
   const memo = `${visitorKey}:${day}`;
@@ -1200,14 +1183,16 @@ async function pushCappedList(
   value: unknown,
   cap = 200,
 ): Promise<void> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      await client.lpush(key, JSON.stringify(value));
-      await client.ltrim(key, 0, cap - 1);
+      const list = (await kvGetJSON<unknown[]>(client, key)) ?? [];
+      list.unshift(value);
+      if (list.length > cap) list.length = cap;
+      await kvPutJSON(client, key, list);
       return;
     } catch (err) {
-      console.error('[loy] Redis list write failed, keeping in memory:', err);
+      console.error('[loy] KV list write failed, keeping in memory:', err);
     }
   }
   const list = (mem.get(key) ?? []) as unknown[];
@@ -1217,21 +1202,21 @@ async function pushCappedList(
 }
 
 async function readCappedList<T>(key: string, mem: Map<string, T[]>): Promise<T[]> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const raw = await client.lrange(key, 0, 199);
+      const list = (await kvGetJSON<T[]>(client, key)) ?? [];
       const out: T[] = [];
-      for (const item of raw) {
+      for (const item of list) {
         try {
-          out.push((typeof item === 'string' ? JSON.parse(item) : item) as T);
+          out.push(item as T);
         } catch {
           // skip a corrupt entry
         }
       }
-      return out;
+      return out.slice(0, 200);
     } catch (err) {
-      console.error('[loy] Redis list read failed, using memory:', err);
+      console.error('[loy] KV list read failed, using memory:', err);
     }
   }
   return [...(mem.get(key) ?? [])];
@@ -1278,25 +1263,30 @@ export async function noteCommunityEvent(
 
 /** Visitors who floated with an identity (for the admin "people floated" count). */
 export async function addFloater(visitorId: string): Promise<void> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      await client.sadd(FLOATERS_KEY, visitorId);
+      const set = (await kvGetJSON<string[]>(client, FLOATERS_KEY)) ?? [];
+      if (!set.includes(visitorId)) {
+        set.push(visitorId);
+        await kvPutJSON(client, FLOATERS_KEY, set);
+      }
       return;
     } catch (err) {
-      console.error('[loy] Redis floater write failed, keeping in memory:', err);
+      console.error('[loy] KV floater write failed, keeping in memory:', err);
     }
   }
   memFloaters.add(visitorId);
 }
 
 export async function countFloaters(): Promise<number> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      return await client.scard(FLOATERS_KEY);
+      const set = (await kvGetJSON<string[]>(client, FLOATERS_KEY)) ?? [];
+      return set.length;
     } catch (err) {
-      console.error('[loy] Redis floater read failed, using memory:', err);
+      console.error('[loy] KV floater read failed, using memory:', err);
     }
   }
   return memFloaters.size;
@@ -1313,25 +1303,18 @@ export async function getStoredWish(id: string): Promise<Wish | null> {
 }
 
 async function writeStoredWish(next: Wish): Promise<boolean> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const raw = await client.lrange(WISHES_KEY, 0, MAX_STORED - 1);
-      for (let i = 0; i < raw.length; i++) {
-        try {
-          const item = typeof raw[i] === 'string' ? JSON.parse(raw[i]) : raw[i];
-          if ((item as Wish).id === next.id) {
-            await client.lset(WISHES_KEY, i, JSON.stringify(next));
-            bumpWishesVersion();
-            return true;
-          }
-        } catch {
-          // skip corrupt entries
-        }
-      }
-      return false;
+      const stored = (await kvGetJSON<Wish[]>(client, WISHES_KEY)) ?? [];
+      const idx = stored.findIndex((w) => w.id === next.id);
+      if (idx === -1) return false;
+      stored[idx] = next;
+      await kvPutJSON(client, WISHES_KEY, stored);
+      bumpWishesVersion();
+      return true;
     } catch (err) {
-      console.error('[loy] Redis wish update failed:', err);
+      console.error('[loy] KV wish update failed:', err);
       return false;
     }
   }
@@ -1394,12 +1377,13 @@ const memReportedBy = new Map<string, Set<string>>();
 
 /** True when this reporter already reported this wish. */
 async function hasReported(id: string, reporterKey: string): Promise<boolean> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      return (await client.sismember(REPORTED_BY_KEY(id), reporterKey)) === 1;
+      const list = (await kvGetJSON<string[]>(client, REPORTED_BY_KEY(id))) ?? [];
+      return list.includes(reporterKey);
     } catch (err) {
-      console.error('[loy] Redis report check failed:', err);
+      console.error('[loy] KV report check failed:', err);
     }
   }
   return memReportedBy.get(id)?.has(reporterKey) ?? false;
@@ -1407,13 +1391,17 @@ async function hasReported(id: string, reporterKey: string): Promise<boolean> {
 
 /** Remember that this reporter reported this wish (dedupe set). */
 async function markReported(id: string, reporterKey: string): Promise<void> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      await client.sadd(REPORTED_BY_KEY(id), reporterKey);
+      const list = (await kvGetJSON<string[]>(client, REPORTED_BY_KEY(id))) ?? [];
+      if (!list.includes(reporterKey)) {
+        list.push(reporterKey);
+        await kvPutJSON(client, REPORTED_BY_KEY(id), list);
+      }
       return;
     } catch (err) {
-      console.error('[loy] Redis report mark failed, keeping it in memory:', err);
+      console.error('[loy] KV report mark failed, keeping it in memory:', err);
     }
   }
   const set = memReportedBy.get(id) ?? new Set<string>();
@@ -1449,14 +1437,16 @@ export interface AuditEntry {
 
 export async function appendAudit(action: string, detail: string): Promise<void> {
   const entry: AuditEntry = { at: Date.now(), action, detail };
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      await client.lpush(AUDIT_KEY, JSON.stringify(entry));
-      await client.ltrim(AUDIT_KEY, 0, MAX_AUDIT - 1);
+      const list = (await kvGetJSON<AuditEntry[]>(client, AUDIT_KEY)) ?? [];
+      list.unshift(entry);
+      if (list.length > MAX_AUDIT) list.length = MAX_AUDIT;
+      await kvPutJSON(client, AUDIT_KEY, list);
       return;
     } catch (err) {
-      console.error('[loy] Redis audit write failed, keeping in memory:', err);
+      console.error('[loy] KV audit write failed, keeping in memory:', err);
     }
   }
   memAudit.unshift(entry);
@@ -1464,21 +1454,21 @@ export async function appendAudit(action: string, detail: string): Promise<void>
 }
 
 export async function listAudit(limit = 50): Promise<AuditEntry[]> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const raw = await client.lrange(AUDIT_KEY, 0, limit - 1);
+      const list = (await kvGetJSON<AuditEntry[]>(client, AUDIT_KEY)) ?? [];
       const out: AuditEntry[] = [];
-      for (const item of raw) {
+      for (const item of list) {
         try {
-          out.push((typeof item === 'string' ? JSON.parse(item) : item) as AuditEntry);
+          out.push(item as AuditEntry);
         } catch {
           // skip a corrupt entry
         }
       }
-      return out;
+      return out.slice(0, limit);
     } catch (err) {
-      console.error('[loy] Redis audit read failed, using memory:', err);
+      console.error('[loy] KV audit read failed, using memory:', err);
     }
   }
   return memAudit.slice(0, limit);
@@ -1487,20 +1477,14 @@ export async function listAudit(limit = 50): Promise<AuditEntry[]> {
 // ---- Admin summary + backup + reset (E5) ------------------------------------
 
 async function scanVisitorIds(): Promise<string[]> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      const ids: string[] = [];
-      let cursor = '0';
-      do {
-        const [next, keys] = await client.scan(cursor, { match: 'loy:visitor:*', count: 500 });
-        cursor = next;
-        for (const k of keys) ids.push(k.slice('loy:visitor:'.length));
-        if (ids.length >= 5000) break;
-      } while (cursor !== '0');
+      const keys = await kvList(client, 'loy:visitor:');
+      const ids = keys.map((k) => k.slice('loy:visitor:'.length));
       return [...new Set(ids)];
     } catch (err) {
-      console.error('[loy] Redis visitor scan failed:', err);
+      console.error('[loy] KV visitor scan failed:', err);
       return [];
     }
   }
@@ -1592,29 +1576,20 @@ export async function buildBackup(): Promise<Record<string, unknown>> {
  * shows it happened.
  */
 export async function resetAll(): Promise<void> {
-  const client = getRedis();
+  const client = getKv();
   if (client) {
     try {
-      let cursor = '0';
-      const keys: string[] = [];
-      do {
-        const [next, found] = await client.scan(cursor, { match: 'loy:*', count: 500 });
-        cursor = next;
-        keys.push(...found);
-        if (keys.length >= 20000) break;
-      } while (cursor !== '0');
+      const keys = await kvList(client, 'loy:');
       if (keys.length > 0) {
-        for (let i = 0; i < keys.length; i += 500) {
-          await client.del(...keys.slice(i, i + 500));
-        }
+        await kvDeleteMany(client, keys);
       }
     } catch (err) {
-      console.error('[loy] Redis reset failed, clearing memory too:', err);
+      console.error('[loy] KV reset failed, clearing memory too:', err);
     }
   }
   memWishes.length = 0;
   memReactions.clear();
-  // Chunk B's in-memory maps too (its Redis keys are covered by the
+  // Chunk B's in-memory maps too (its KV keys are covered by the
   // loy:* scan above).
   memBlessings.clear();
   memSent.clear();
@@ -1629,8 +1604,10 @@ export async function resetAll(): Promise<void> {
   memThanks.clear();
   memSky.clear();
   memFloaters.clear();
+  memCandleLit.clear();
   memAudit.length = 0;
   memRestoreId.clear();
+  memReportedBy.clear();
   memConfig = null;
   await appendAudit('reset', 'Reset all: every wish, reaction, lantern, mission and stamp deleted; river left blank (no seeds).');
 }

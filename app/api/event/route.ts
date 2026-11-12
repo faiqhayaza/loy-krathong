@@ -5,7 +5,7 @@
 // in `lib/events.ts`; `ref` is a string or number as the kind requires
 // (day number for visit_place, wish id for react, 0 for day-wide kinds).
 // Requires the `x-visitor-id` header carrying the visitor's 10-digit
-// recovery ID (`lib/identity.ts`) — that ID keys the Redis log
+// recovery ID (`lib/identity.ts`) — that ID keys the KV log
 // (`loy:events:<recovery-id>`). Rate-limited at 5/minute/IP in its own
 // bucket (scope 'event'), so event traffic can never eat the float
 // budget. The device-local store remains the source of truth; this log
