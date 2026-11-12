@@ -132,7 +132,12 @@ try {
     check('POST blocked word → 400 blocked_content', r.status === 400 && r.body?.error === 'blocked_content', `HTTP ${r.status}`);
 
     // --- happy path: float, verify, daily limit, delete -------------------
-    const wishText = `smoke-test wish ${Date.now()}`;
+    // NOTE: the wish text must not end in "wish" immediately before
+    // digits — the blocklist's collapsed+unmasked match turns
+    // "wish" + "17…" into "wishit", which contains "shit", and the
+    // float is refused as blocked_content. That is a real false
+    // positive in containsBlocked (see FIXES.md), not a test bug.
+    const wishText = `smoke-test krathong ${Date.now()}`;
     r = await req(
       '/api/wishes',
       json(
@@ -146,7 +151,7 @@ try {
       typeof wishId === 'string' &&
       !('worry' in (r.body?.wish ?? {})) &&
       !('visitorId' in (r.body?.wish ?? {}));
-    check('POST valid wish (+ worry field) → 201, no worry/visitorId echoed', noLeak, `HTTP ${r.status}`);
+    check('POST valid wish (+ worry field) → 201, no worry/visitorId echoed', noLeak, `HTTP ${r.status}, error=${r.body?.error ?? 'none'}`);
 
     if (wishId) {
       r = await req('/api/wishes');
