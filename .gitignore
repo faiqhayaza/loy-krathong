@@ -2,4 +2,8 @@ node_modules
 .next
 out
 .env*.local
+# Never commit a real .env — plain .env is NOT covered by .env*.local.
+.env
+.env.*
+!.env.example
 .DS_Store
