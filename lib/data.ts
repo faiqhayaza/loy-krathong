@@ -326,6 +326,48 @@ const COLLAPSED_DENY = DENY_TERMS.filter(
   (term) => !THAI_CHARS.test(term) && !NOT_COLLAPSE_SAFE.has(term),
 ).map((term) => normalise(term).replace(/ /g, ''));
 
+/**
+ * Word-boundary match on separator-stripped text.
+ *
+ * `boundaryBefore[i]` is true when `original[i]` starts a word in the
+ * normalised text — the start of the string, or a space before it
+ * (normalise has already turned every separator into a space). A term
+ * matches only when it starts AND ends on a boundary: the start/end
+ * of the string, a word start/end, or a non-alphanumeric character
+ * next to it (punctuation such as '…' — or a lookalike such as '!',
+ * which the unmasker itself turns into a letter, so the boundary is
+ * judged on the pre-unmask `original`, never on `haystack`).
+ *
+ * That keeps the evasions caught — `f u c k` and `f.u.c.k` collapse
+ * to a whole-word `fuck`, `sh1t` unmasks to a whole-word `shit` —
+ * while a substring inside a larger collapsed token no longer trips
+ * the filter: "I wish 17…" unmasks to `iwishit…`, and the `shit` in
+ * it starts mid-word, inside `wish`. The plain word-boundary layer
+ * above already treats compounds the same way (`shithead` is not
+ * `shit`), so the two layers now agree.
+ */
+function collapsedMatch(
+  haystack: string,
+  original: string,
+  boundaryBefore: boolean[],
+  term: string,
+): boolean {
+  let from = 0;
+  for (;;) {
+    const at = haystack.indexOf(term, from);
+    if (at === -1) return false;
+    const startOk =
+      at === 0 || boundaryBefore[at] || !/[A-Za-z0-9]/.test(original[at - 1]);
+    const end = at + term.length;
+    const endOk =
+      end === haystack.length ||
+      boundaryBefore[end] ||
+      !/[A-Za-z0-9]/.test(original[end]);
+    if (startOk && endOk) return true;
+    from = at + 1;
+  }
+}
+
 /** Layer 1. True when the text must be rejected outright. */
 export function containsBlocked(text: string): boolean {
   const normalised = normalise(text);
@@ -335,10 +377,32 @@ export function containsBlocked(text: string): boolean {
     normalised,
   );
   if (THAI_DENY.some((term) => thai.includes(term))) return true;
-  const collapsed = normalised.replace(/ /g, '');
-  if (COLLAPSED_DENY.some((term) => collapsed.includes(term))) return true;
+  // Collapse the spaces away, remembering where each word started, so
+  // the two matches below can still tell a whole word from a substring
+  // of a larger token.
+  const collapsedChars: string[] = [];
+  const boundaryBefore: boolean[] = [];
+  let wordStart = true;
+  for (const ch of normalised) {
+    if (ch === ' ') {
+      wordStart = true;
+      continue;
+    }
+    collapsedChars.push(ch);
+    boundaryBefore.push(wordStart);
+    wordStart = false;
+  }
+  const collapsed = collapsedChars.join('');
+  if (
+    COLLAPSED_DENY.some((term) =>
+      collapsedMatch(collapsed, collapsed, boundaryBefore, term),
+    )
+  )
+    return true;
   const unmasked = collapsed.replace(/[0-9!@$+v]/g, (c) => LOOKALIKES[c] ?? c);
-  return COLLAPSED_DENY.some((term) => unmasked.includes(term));
+  return COLLAPSED_DENY.some((term) =>
+    collapsedMatch(unmasked, collapsed, boundaryBefore, term),
+  );
 }
 
 export function isKnownFlower(id: string): boolean {

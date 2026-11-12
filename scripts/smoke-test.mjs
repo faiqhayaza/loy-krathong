@@ -131,13 +131,18 @@ try {
     r = await req('/api/wishes', json({ wish: 'this shit wish must be refused', name: 'smoke' }));
     check('POST blocked word → 400 blocked_content', r.status === 400 && r.body?.error === 'blocked_content', `HTTP ${r.status}`);
 
+    // Leetspeak evasion is still caught: the lookalike-unmasker reads
+    // 'sh1t' as 'shit' — the word-boundary fix must not let it through.
+    r = await req('/api/wishes', json({ wish: 'sh1t happens', name: 'smoke' }));
+    check('POST leetspeak blocked word → 400 blocked_content', r.status === 400 && r.body?.error === 'blocked_content', `HTTP ${r.status}`);
+
     // --- happy path: float, verify, daily limit, delete -------------------
-    // NOTE: the wish text must not end in "wish" immediately before
-    // digits — the blocklist's collapsed+unmasked match turns
-    // "wish" + "17…" into "wishit", which contains "shit", and the
-    // float is refused as blocked_content. That is a real false
-    // positive in containsBlocked (see FIXES.md), not a test bug.
-    const wishText = `smoke-test krathong ${Date.now()}`;
+    // REGRESSION: the wish text deliberately starts "I wish 17…" — the
+    // blocklist's collapsed+unmasked match used to turn "wish" + "17…"
+    // into "wishit", which contains "shit", and the float was refused
+    // as blocked_content. The matcher now checks word boundaries, so
+    // this floats (see containsBlocked in lib/data.ts).
+    const wishText = `I wish 17 people find peace ${Date.now()}`;
     r = await req(
       '/api/wishes',
       json(
