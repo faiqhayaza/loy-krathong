@@ -1,0 +1,36 @@
+# CI — type-check, lint, build, and run the HTTP smoke tests on every
+# push and pull request to main. This is the whole automated gate: before
+# it existed, nothing ran on push at all.
+#
+# The smoke tests (scripts/smoke-test.mjs) build the app and boot the
+# production server locally, then exercise the real endpoints: wish
+# validation, the worry-never-stored property, the one-float-per-day
+# limit, owner delete, and the GET /api/state rate limit.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Type-check
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Smoke tests
+        run: npm test
