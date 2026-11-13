@@ -615,7 +615,10 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
     // the size they already have. w is the panel width in CSS px.
     function desktopBoatFactor(): number {
       if (w < 960) return 1;
-      return Math.min(1.5, w / 1100);
+      // Floored at 1: w / 1100 is below 1 until w reaches 1100, and
+      // without the floor the 960-1100px band shrank the boats below
+      // their phone size (f(1024) was 0.93 — smaller than live).
+      return Math.max(1, Math.min(1.5, w / 1100));
     }
     // The margin kept below the water for the nearest boat's name tag:
     // the tag hangs below the hull, so the reserve has to cover the
