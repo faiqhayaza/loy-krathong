@@ -102,7 +102,18 @@ button, input, textarea { font: inherit; color: inherit; }
   max-width: 1180px; margin: 0 auto; padding: 12px 16px 10px; flex-wrap: wrap;
   background: rgba(7, 10, 31, 0.85); backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line-soft);
+  /* The bar slides away on scroll-down and back on scroll-up (see
+     page.tsx): Wat Arun's spire tip sits 168px into the river panel
+     on desktop and 153px on mobile, while the bar is 61/131px tall,
+     so the tip used to slide under the bar after ~107px of panel
+     scroll on desktop and ~22px on mobile. Sliding the bar away
+     keeps the tip uncovered while scrolling — it leaves through the
+     top edge like any other part of the scene. Transform only: the
+     bar keeps its place in flow, so the anchor scroll-margins still
+     land sections in the same place. */
+  transition: transform var(--dur-fast) var(--ease-out);
 }
+.topbar.topbar-hidden { transform: translateY(-110%); }
 @media (min-width: 960px) { .topbar { padding-left: 24px; padding-right: 24px; } }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--cream); }
 .brand-mark { font-size: 30px; line-height: 1; }

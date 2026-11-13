@@ -219,6 +219,37 @@ export default function Page() {
   });
   const [gateOpen, setGateOpen] = useState(false);
   const [gateMode, setGateMode] = useState<'signup' | 'signin'>('signup');
+  // The sticky bar hides on scroll-down and returns on scroll-up (see
+  // globals.css .topbar-hidden): the river photo's spire tip used to
+  // slide under the bar while scrolling through the river, because the
+  // tip sits only 168px into the panel on desktop (153px on mobile)
+  // and the bar is 61px tall (131px on mobile). With the bar out of
+  // the way the tip is never covered — it scrolls off the top edge
+  // like any other part of the scene — and the nav stays one upward
+  // scroll away. The bar keeps its place in flow, so anchor jumps
+  // still land where the scroll-margins put them.
+  const [topbarHidden, setTopbarHidden] = useState(false);
+  useEffect(() => {
+    let lastY = window.scrollY;
+    let raf = 0;
+    const apply = () => {
+      raf = 0;
+      const y = window.scrollY;
+      let next: boolean | null = null;
+      if (y > 140 && y > lastY + 6) next = true;
+      else if (y < lastY - 6 || y <= 140) next = false;
+      lastY = y;
+      if (next !== null) setTopbarHidden((prev) => (prev === next ? prev : next));
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(apply);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
   // null (undecided) still shows the gate, so the first paint agrees
   // with the server and there is no flash of the river.
   const gateVisible = (showIdentityGate !== false && !gateSkipped) || gateOpen;
@@ -558,7 +589,7 @@ export default function Page() {
         </div>
       )}
       <div ref={pageWrapRef} className={gateVisible ? 'gate-dimmed' : undefined} aria-hidden={gateVisible || undefined}>
-      <header className="topbar">
+      <header className={topbarHidden ? 'topbar topbar-hidden' : 'topbar'}>
         <a className="brand" href="#top">
           <span className="brand-mark" aria-hidden="true">🪷</span>
           <span>

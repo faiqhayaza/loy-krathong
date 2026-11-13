@@ -601,15 +601,39 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       return h * TEMPLE_TOP_FRAC;
     }
 
+    // Boats on a wide panel: at 110 * rowScale a krathong is 86-134px
+    // wide whatever the viewport, so on a 1920px desktop panel it reads
+    // as a toy on a vast river while on a 390px phone it fills a third
+    // of the width. Above the 960px breakpoint the boats grow with the
+    // panel (capped at 1.5x, so the nearest boat stays a krathong, not
+    // a ship); at or below it the factor is exactly 1, so phones keep
+    // the size they already have. w is the panel width in CSS px.
+    function desktopBoatFactor(): number {
+      if (w < 960) return 1;
+      return Math.min(1.5, w / 1100);
+    }
+    // The margin kept below the water for the nearest boat's name tag:
+    // the tag hangs below the hull, so the reserve has to cover the
+    // bigger near-bank boat plus its (taller) tag. At the old sizes
+    // 84px was just enough; the reserve grows with the desktop factor
+    // so the tag still lands below the boat instead of being clamped
+    // up onto the hull at the panel edge.
+    function bottomReserve(): number {
+      const f = desktopBoatFactor();
+      if (f <= 1) return 84;
+      const scNear = 1.22 * f;
+      const tagH = Math.round((20 * scNear) / 1.22);
+      return Math.ceil(31.5 * scNear + tagH + 24) + 4;
+    }
     function rowY(row: number): number {
       // Row 0 is the far bank (small, high), row 2 the near bank (large,
       // low). The rows pack into the water below the waterline, with a
       // margin at the bottom so the nearest krathong, its name tag
       // hanging below it, and its splash rings never clip the panel edge.
-      return horizon() + 14 + (row * (h - horizon() - 84)) / (ROWS - 1);
+      return horizon() + 14 + (row * (h - horizon() - bottomReserve())) / (ROWS - 1);
     }
     function rowScale(row: number): number {
-      return 0.78 + row * 0.22;
+      return (0.78 + row * 0.22) * desktopBoatFactor();
     }
 
     // Clouds are pre-rendered once to offscreen canvases: layered
@@ -854,6 +878,10 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       }
       seedSky();
       syncSprites();
+      // A resize across the desktop breakpoint changes the boat factor,
+      // so boats already on the river take the new size at once instead
+      // of keeping the old one until they drift off and respawn.
+      for (const s of sprites.values()) s.scale = rowScale(s.row);
       draw(performance.now());
     }
 
@@ -930,7 +958,10 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       g.font = font;
       const tw = g.measureText(name).width;
       const tagW = tw + 16;
-      const tagH = 20;
+      // The tag grows with the boat on wide panels so the name stays
+      // readable next to a bigger krathong; at phone sizes (sc <= 1.22)
+      // it stays exactly 20px, as before.
+      const tagH = sc > 1.22 ? Math.round((20 * sc) / 1.22) : 20;
       const tagCx = Math.max(tagW / 2 + 6, Math.min(w - tagW / 2 - 6, s.x));
       const tagY = Math.min(boatBottomY(y, sc) + 6 + dy, h - tagH - 4);
       return { x: tagCx - tagW / 2, y: tagY, w: tagW, h: tagH, cx: tagCx, name };
