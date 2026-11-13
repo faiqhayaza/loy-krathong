@@ -224,10 +224,15 @@ function createWaterRenderer(canvas: HTMLCanvasElement): { render: (o: WaterRend
         float sy=1.0-v_uv.y;
         if(sy<u_top) discard;
         float d=clamp((sy-u_top)/(1.0-u_top),0.0,1.0);
-        // Feather the top edge: the shader fades in over the first 6%
+        // Feather the top edge: the shader fades in over the first 18%
         // of the water instead of starting on a hard line, so the
         // animated water melts into the photograph's water above it.
-        float topFade=smoothstep(0.0,0.06,d);
+        // 6% read as a faint horizontal seam where the moving water
+        // began (the navy veil switching on over ~17px); 18% spreads
+        // the same change over ~50px, below what the eye picks up as
+        // a line, while the photograph's own ripple texture still
+        // shows through near the waterline.
+        float topFade=smoothstep(0.0,0.18,d);
         float x=v_uv.x;
         float t=u_time;
         float current=.075+u_wind*.009+u_rain*.035;
@@ -1003,7 +1008,17 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // until it is ready the boat is skipped for that frame and
       // appears once loaded.
       const img = krathongImage(wish.boat, wish.flower, wish.flame, wish.design);
-      if (!img.complete || img.naturalWidth === 0) return;
+      if (!img.complete || img.naturalWidth === 0) {
+        // Reduced motion draws one frozen frame and never loops, so a
+        // boat whose artwork is still loading would stay missing until
+        // the 30 s wishes poll redraws the frame. Hook the load to
+        // redraw once, so the static frame fills in — boat, reflection
+        // and wake together — as soon as the artwork is ready.
+        // Animated mode needs none of this: the next frame, 16 ms
+        // later, draws the boat.
+        if (reduced) img.onload = () => redrawRef.current?.();
+        return;
+      }
       const w = 110 * sc;
       const h = (w * KRATHONG_VIEWBOX.h) / KRATHONG_VIEWBOX.w;
       const left = s.x - w / 2;
@@ -1013,6 +1028,64 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       const flameCy = top + KRATHONG_FLAME_CENTER.y * k;
       const flameBaseX = left + KRATHONG_FLAME_BASE.x * k;
       const flameBaseY = top + KRATHONG_FLAME_BASE.y * k;
+
+      // The boat's reflection: the same artwork, flipped and dissolved
+      // in the water below the hull. Four horizontal bands, each offset
+      // a touch by its own slow sine, so the reflection shivers instead
+      // of sitting mirror-still; each band dimmer than the one above
+      // it, so the reflection fades out with depth instead of ending
+      // on a line. A warm glow under the candle answers the flame
+      // above it. The name tag hangs on its own canvas above this one,
+      // so it covers the middle of the reflection — the shimmer shows
+      // around it, the way a real reflection shows around a floating
+      // label. Drawn first, so the hull paints over the reflection's
+      // top edge and the two meet without a gap.
+      const reflH = h * 0.7;
+      const reflTop = boatBottomY(y, sc) - 2 * sc;
+      const reflBands = 4;
+      const reflAlphas = [0.2, 0.15, 0.1, 0.05];
+      for (let i = 0; i < reflBands; i++) {
+        // Source band i is the i-th strip down the artwork; flipped,
+        // it lands reflBands - 1 - i strips down the reflection — the
+        // hull (bottom of the artwork) touches the water, the candle
+        // (top) drowns deepest.
+        const srcH = img.naturalHeight / reflBands;
+        const dstH = reflH / reflBands;
+        const ox = Math.sin(t / 900 + s.phase + i * 1.7) * 1.6;
+        ctx!.globalAlpha = reflAlphas[reflBands - 1 - i];
+        ctx!.drawImage(img, 0, i * srcH, img.naturalWidth, srcH, left + ox, reflTop + (reflBands - 1 - i) * dstH, w, dstH);
+      }
+      ctx!.globalAlpha = 1;
+      // candlelight on the water under the flame
+      const fGlow = ctx!.createRadialGradient(s.x, reflTop + 5 * sc, 1, s.x, reflTop + 5 * sc, 30 * sc);
+      fGlow.addColorStop(0, fc + '26');
+      fGlow.addColorStop(1, fc + '00');
+      ctx!.fillStyle = fGlow;
+      ctx!.beginPath();
+      ctx!.ellipse(s.x, reflTop + 5 * sc, 30 * sc, 9 * sc, 0, 0, Math.PI * 2);
+      ctx!.fill();
+
+      // Wake — the water answers a moving boat: two soft, flat
+      // ellipses trailing behind it (boats drift right, so the wake
+      // trails left), breathing slowly so they shimmer instead of
+      // sitting still, and a faint gold shimmer under the hull where
+      // the candlelight catches the disturbed water.
+      const wakeA = 0.1 + 0.04 * Math.sin(t / 800 + s.phase);
+      ctx!.strokeStyle = `rgba(205, 214, 248, ${wakeA.toFixed(3)})`;
+      ctx!.lineWidth = 1.2;
+      ctx!.beginPath();
+      ctx!.ellipse(s.x - 36 * sc, y + 11 * sc, 30 * sc, 5 * sc, 0, 0, Math.PI * 2);
+      ctx!.stroke();
+      const wakeB = 0.07 + 0.03 * Math.sin(t / 800 + s.phase + 1.3);
+      ctx!.strokeStyle = `rgba(205, 214, 248, ${wakeB.toFixed(3)})`;
+      ctx!.beginPath();
+      ctx!.ellipse(s.x - 54 * sc, y + 13 * sc, 22 * sc, 4 * sc, 0, 0, Math.PI * 2);
+      ctx!.stroke();
+      const wakeGold = 0.06 + 0.02 * Math.sin(t / 800 + s.phase + 2.1);
+      ctx!.fillStyle = `rgba(246, 211, 107, ${wakeGold.toFixed(3)})`;
+      ctx!.beginPath();
+      ctx!.ellipse(s.x, y + 10 * sc, 34 * sc, 4 * sc, 0, 0, Math.PI * 2);
+      ctx!.fill();
 
       // splash rings for a fresh krathong
       if (s.fresh && age < 2600) {
@@ -1346,7 +1419,11 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // veil dims the water the way the sky is veiled.
       const waterH = h - skyH;
       const seat = ctx!.createLinearGradient(0, skyH, 0, h);
-      seat.addColorStop(0, 'rgba(10, 16, 48, 0.08)');
+      // The wash ramps in from transparent at the waterline — starting
+      // it at 0.08 put a faint full-width step exactly where the
+      // shader's edge already sits, doubling the seam.
+      seat.addColorStop(0, 'rgba(10, 16, 48, 0)');
+      seat.addColorStop(0.05, 'rgba(10, 16, 48, 0.08)');
       seat.addColorStop(1, 'rgba(3, 4, 12, 0.16)');
       ctx!.fillStyle = seat;
       ctx!.fillRect(0, skyH, w, waterH);
@@ -1398,7 +1475,11 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
       // top of them read as little gold fans. A4: at stage >= 3 the
       // column burns brighter with the temple above it.
       const tGlow = ctx!.createLinearGradient(0, skyH, 0, skyH + 110);
-      tGlow.addColorStop(0, stageRef.current >= 3 ? 'rgba(246, 211, 107, 0.22)' : 'rgba(246, 211, 107, 0.05)');
+      // Same ramp-in as the seat wash: the column starts transparent
+      // at the waterline and peaks a few pixels down, so its top edge
+      // is not a line across the temple's reflection.
+      tGlow.addColorStop(0, 'rgba(246, 211, 107, 0)');
+      tGlow.addColorStop(0.09, stageRef.current >= 3 ? 'rgba(246, 211, 107, 0.22)' : 'rgba(246, 211, 107, 0.05)');
       tGlow.addColorStop(1, 'rgba(246, 211, 107, 0)');
       ctx!.fillStyle = tGlow;
       ctx!.fillRect(templeX() - 70, skyH, 140, 110);
@@ -1532,6 +1613,19 @@ export default function RiverCanvas({ wishes, lang, highlightId, onHover, onSele
         ctx!.fillStyle = `rgba(4, 6, 20, ${(overcast * 0.3).toFixed(3)})`;
         ctx!.fillRect(0, skyH, w, h - skyH);
       }
+      // The panel's bottom edge melts into the page: a wash of the page
+      // background (#070a1f, --night-0) over the last stretch of water,
+      // so the river dissolves into the night instead of ending on a
+      // hard cut where the photo's texture just stops. It is the last
+      // water treatment — after every water layer, before the boats —
+      // so the boats and their name tags stay crisp while the water
+      // beneath them fades out.
+      const meltH = Math.min(170, h * 0.16);
+      const melt = ctx!.createLinearGradient(0, h - meltH, 0, h);
+      melt.addColorStop(0, 'rgba(7, 10, 31, 0)');
+      melt.addColorStop(1, 'rgba(7, 10, 31, 1)');
+      ctx!.fillStyle = melt;
+      ctx!.fillRect(0, h - meltH, w, meltH);
       const list = wishesRef.current;
       const ordered = [...sprites.values()].sort((a, b) => a.row - b.row);
       for (const s of ordered) {
